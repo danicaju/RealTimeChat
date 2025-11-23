@@ -1,5 +1,4 @@
-# 🟢 ProyectoChatJava
-
+# 🟢 RealTimeChat
 💬 **Chat multicliente en Java** que permite la **comunicación en tiempo real** entre varios clientes conectados a un servidor central.  
 
 ---
