@@ -46,11 +46,11 @@ proyectopersonal/
 ## ⚙️ Cómo Ejecutarlo
 
 ```bash
-### 1️⃣ Servidor
+ 1️⃣ Servidor
 javac ServidorChat.java SalaChat.java ClienteHandler.java
 java proyectopersonal.ServidorChat
 
-### 2️⃣ Clientes (varias terminales o PCs)
+ 2️⃣ Clientes (varias terminales o PCs)
 javac ClienteChat.java LT.java
 java proyectopersonal.ClienteChat
 ```
