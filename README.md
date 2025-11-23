@@ -64,8 +64,8 @@ java proyectopersonal.ClienteChat
 
 ### 💡 Este proyecto es personal, pero se aceptan mejoras:
 
- Mejorar la interfaz con GUI (Swing o JavaFX)
+     Mejorar la interfaz con GUI (Swing o JavaFX)
 
- Añadir historial de mensajes
+     Añadir historial de mensajes
 
- Encriptar mensajes para mayor seguridad
+     Encriptar mensajes para mayor seguridad
