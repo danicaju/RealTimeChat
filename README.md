@@ -34,6 +34,7 @@ Interfaz simple y clara para los usuarios.
 
 ## 📂 Estructura del Proyecto
 
+```text
 proyectopersonal/
 ├── ClienteChat.java       # Cliente que se conecta al servidor
 ├── ServidorChat.java      # Servidor central del chat
@@ -44,6 +45,7 @@ proyectopersonal/
 
 ## ⚙️ Cómo Ejecutarlo
 
+```bash
 ### 1️⃣ Servidor
 javac ServidorChat.java SalaChat.java ClienteHandler.java
 java proyectopersonal.ServidorChat
