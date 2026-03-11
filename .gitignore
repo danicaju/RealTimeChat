@@ -1,0 +1,43 @@
+# Archivos compilados de Java
+*.class
+
+# Archivos de datos locales del juego (evita subir tu historial de partidas al repo)
+partidas.txt
+
+# Archivos de empaquetado
+*.jar
+*.war
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# Carpetas y archivos de NetBeans
+/nbproject/
+/nbbuild/
+/dist/
+/build/
+
+# Carpetas y archivos de Eclipse
+.metadata/
+bin/
+tmp/
+*.tmp
+*.bak
+.settings/
+.classpath
+.project
+
+# Carpetas y archivos de IntelliJ IDEA
+.idea/
+*.iws
+*.iml
+*.ipr
+out/
+
+# Carpetas y archivos de VS Code
+.vscode/
+
+# Archivos ocultos generados por el Sistema Operativo (macOS / Windows)
+.DS_Store
+Thumbs.db
