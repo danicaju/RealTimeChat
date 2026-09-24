@@ -54,5 +54,6 @@ public class ClienteChat {
         } catch (IOException e) {
             System.err.println("❌ Error al conectar con el servidor: " + e.getMessage());
         }
+        System.exit(0);
     }
 }
