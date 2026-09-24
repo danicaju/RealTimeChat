@@ -1,4 +1,7 @@
 # 💬 RealTimeChat
+![Java](https://img.shields.io/badge/Java-ED8B00?style=for-the-badge&logo=java&logoColor=white)
+![Status](https://img.shields.io/badge/Status-Completed-success?style=for-the-badge)
+![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)
 
 **Chat multicliente en Java** que permite la **comunicación en tiempo real** entre varios clientes conectados a un servidor central.
 
