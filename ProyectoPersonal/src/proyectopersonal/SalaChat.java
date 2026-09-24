@@ -1,20 +1,21 @@
 package proyectopersonal;
 
-import java.util.ArrayList;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class SalaChat {
 
-    private ArrayList<ClienteHandler> clientes = new ArrayList<>();
+    // Se utiliza CopyOnWriteArrayList para una concurrencia más segura sin necesidad de sincronización explícita pesada.
+    private final CopyOnWriteArrayList<ClienteHandler> clientes = new CopyOnWriteArrayList<>();
 
-    public synchronized void agregarCliente(ClienteHandler c) {
+    public void agregarCliente(ClienteHandler c) {
         clientes.add(c);
     }
 
-    public synchronized void eliminarCliente(ClienteHandler c) {
+    public void eliminarCliente(ClienteHandler c) {
         clientes.remove(c);
     }
 
-    public synchronized void enviarMensajeATodos(String mensaje, ClienteHandler remitente) {
+    public void enviarMensajeATodos(String mensaje, ClienteHandler remitente) {
         for (ClienteHandler c : clientes) {
             if (c != remitente) {
                 c.enviarMensaje(mensaje);

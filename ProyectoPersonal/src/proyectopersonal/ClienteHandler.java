@@ -8,39 +8,49 @@ import java.net.Socket;
 
 public class ClienteHandler extends Thread {
 
-    private Socket socketCliente;
+    private final Socket socketCliente;
     private PrintWriter salida;
-    private SalaChat salaChat;
+    private final SalaChat salaChat;
 
     public ClienteHandler(Socket socketCliente, SalaChat salaChat) throws IOException {
         this.socketCliente = socketCliente;
         this.salaChat = salaChat;
-        salida = new PrintWriter(socketCliente.getOutputStream(), true);
+        this.salida = new PrintWriter(socketCliente.getOutputStream(), true);
     }
 
     @Override
     public void run() {
-        try {
-            BufferedReader reader = new BufferedReader(new InputStreamReader(socketCliente.getInputStream()));
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(socketCliente.getInputStream()))) {
             String mensaje;
             while ((mensaje = reader.readLine()) != null) {
 
                 if (mensaje.equalsIgnoreCase("salir")) {
-                    System.out.println("Cliente " + socketCliente.getInetAddress() + " se ha desconectado.");
-                    salaChat.eliminarCliente(this);
-                    socketCliente.close();
+                    System.out.println("🚪 Cliente " + socketCliente.getInetAddress() + " se ha desconectado de forma segura.");
                     break;
                 }
 
                 salaChat.enviarMensajeATodos(mensaje, this);
             }
         } catch (IOException ex) {
-            System.out.println("Cliente desconectado inesperadamente: " + socketCliente.getInetAddress());
+            System.err.println("⚠️ Cliente desconectado inesperadamente: " + socketCliente.getInetAddress());
+        } finally {
             salaChat.eliminarCliente(this);
+            try {
+                if (socketCliente != null && !socketCliente.isClosed()) {
+                    socketCliente.close();
+                }
+                if (salida != null) {
+                    salida.close();
+                }
+            } catch (IOException e) {
+                System.err.println("❌ Error al cerrar el socket: " + e.getMessage());
+            }
         }
     }
 
     public void enviarMensaje(String mensaje) {
-        salida.println(mensaje);
+        if (salida != null) {
+            salida.println(mensaje);
+        }
     }
 }
