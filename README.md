@@ -15,6 +15,10 @@
 
 A robust real-time client-server instant messaging platform engineered in **Java 17+** over raw TCP/IP sockets. Built with a structured **JSON application protocol**, scalable concurrency management via **`ExecutorService` (Thread Pool)**, atomic case-insensitive user registry, and **dual frontends**: a modern Slack/Discord-inspired GUI themed with **FlatLaf Dark** and an agile, interactive terminal client.
 
+<p align="center">
+  <img src="assets/realtimechat-ui-preview.svg" alt="RealTimeChat FlatLaf Dark Client Interface" width="100%" />
+</p>
+
 ---
 
 ## Network Architecture

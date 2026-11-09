@@ -15,6 +15,10 @@
 
 Plataforma cliente-servidor de mensajería instantánea en tiempo real desarrollada en **Java 17+** sobre sockets TCP/IP. Incorpora un protocolo estructurado en **JSON**, gestión de concurrencia mediante **Thread Pool (ExecutorService)**, control atómico de usuarios y **doble frontend**: una interfaz gráfica moderna inspirada en Discord/Slack con Look & Feel **FlatLaf Dark** y un cliente de terminal interactivo ágil y eficiente.
 
+<p align="center">
+  <img src="assets/realtimechat-ui-preview.svg" alt="Interfaz de cliente RealTimeChat FlatLaf Dark" width="100%" />
+</p>
+
 ---
 
 ## Arquitectura de Red

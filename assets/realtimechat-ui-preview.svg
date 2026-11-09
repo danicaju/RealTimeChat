@@ -1,0 +1,193 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 620" width="980" height="620" style="background: transparent;">
+  <defs>
+    <!-- Window Shadow Filter -->
+    <filter id="winShadow" x="-5%" y="-5%" width="110%" height="115%" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="16" result="blur"/>
+      <feOffset dx="0" dy="12" result="offset"/>
+      <feFlood flood-color="#000000" flood-opacity="0.45" result="color"/>
+      <feComposite in2="blur" in="color" operator="in" result="shadow"/>
+      <feMerge>
+        <feMergeNode in="shadow"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <linearGradient id="headerGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#23272e"/>
+      <stop offset="100%" stop-color="#1e1f23"/>
+    </linearGradient>
+
+    <linearGradient id="sendBtnGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#5865f2"/>
+      <stop offset="100%" stop-color="#4752c4"/>
+    </linearGradient>
+  </defs>
+
+  <style>
+    .mono { font-family: 'Consolas', 'JetBrains Mono', 'Fira Code', 'Courier New', monospace; }
+    .sans { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; }
+  </style>
+
+  <g filter="url(#winShadow)">
+    <!-- Main Window Outer -->
+    <rect x="20" y="20" width="940" height="580" rx="10" ry="10" fill="#1e1f22" stroke="#35373c" stroke-width="1.2"/>
+
+    <!-- Window Title Bar -->
+    <path d="M 20 30 Q 20 20 30 20 L 950 20 Q 960 20 960 30 L 960 56 L 20 56 Z" fill="#181a1f" stroke="#2b2e35" stroke-width="1"/>
+    
+    <!-- Traffic lights / window controls -->
+    <circle cx="42" cy="38" r="6" fill="#ed4245"/>
+    <circle cx="62" cy="38" r="6" fill="#fee75c"/>
+    <circle cx="82" cy="38" r="6" fill="#57f287"/>
+
+    <!-- Window Title -->
+    <text x="490" y="42" class="sans" font-size="12" font-weight="600" fill="#9da5b4" text-anchor="middle">RealTimeChat: Multi-Client Messaging Client (FlatLaf Dark)</text>
+
+    <!-- Top App Header -->
+    <rect x="20" y="56" width="940" height="46" fill="url(#headerGrad)" stroke="#2b2e35" stroke-width="1"/>
+    
+    <!-- App Logo / Name -->
+    <text x="44" y="85" class="sans" font-size="16" font-weight="700" fill="#f2f3f5">RealTimeChat</text>
+    <rect x="156" y="70" width="56" height="19" rx="9.5" fill="#2d3748"/>
+    <text x="184" y="83" class="sans" font-size="10" font-weight="700" fill="#818cf8" text-anchor="middle">v2.0.0</text>
+
+    <!-- Right Header: Status Indicator and Switch Button -->
+    <g transform="translate(680, 68)">
+      <circle cx="10" cy="11" r="4.5" fill="#57f287"/>
+      <text x="22" y="15" class="sans" font-size="11.5" font-weight="600" fill="#57f287">Connected (127.0.0.1:5000)</text>
+
+      <rect x="175" y="0" width="95" height="23" rx="4" fill="#2b2d31" stroke="#4e5058" stroke-width="1"/>
+      <text x="222" y="15" class="sans" font-size="10.5" fill="#dbdee1" text-anchor="middle">Server Config</text>
+    </g>
+
+    <!-- Content Area: Left Sidebar (Users) & Right Chat Panel -->
+    <g transform="translate(20, 102)">
+      <!-- SIDEBAR (width 230) -->
+      <rect x="0" y="0" width="230" height="456" fill="#2b2d31" stroke="#35373c" stroke-width="1"/>
+
+      <!-- Sidebar Title -->
+      <text x="18" y="26" class="sans" font-size="11" font-weight="700" fill="#949ba4" letter-spacing="0.5">ONLINE USERS (4)</text>
+
+      <!-- User Item 1: Daniel (You) -->
+      <g transform="translate(14, 38)">
+        <rect x="0" y="0" width="202" height="38" rx="6" fill="#35373c"/>
+        <circle cx="19" cy="19" r="13" fill="#22c55e"/>
+        <text x="19" y="23" class="sans" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">D</text>
+        <circle cx="28" cy="27" r="3.5" fill="#23a55a" stroke="#2b2d31" stroke-width="1.5"/>
+        <text x="40" y="20" class="sans" font-size="12" font-weight="700" fill="#f2f3f5">Daniel</text>
+        <text x="82" y="20" class="sans" font-size="10" fill="#949ba4">(You)</text>
+      </g>
+
+      <!-- User Item 2: Alice -->
+      <g transform="translate(14, 82)">
+        <rect x="0" y="0" width="202" height="38" rx="6" fill="transparent"/>
+        <circle cx="19" cy="19" r="13" fill="#5865f2"/>
+        <text x="19" y="23" class="sans" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">A</text>
+        <circle cx="28" cy="27" r="3.5" fill="#23a55a" stroke="#2b2d31" stroke-width="1.5"/>
+        <text x="40" y="22" class="sans" font-size="12" font-weight="600" fill="#dbdee1">Alice</text>
+      </g>
+
+      <!-- User Item 3: Bob -->
+      <g transform="translate(14, 126)">
+        <rect x="0" y="0" width="202" height="38" rx="6" fill="transparent"/>
+        <circle cx="19" cy="19" r="13" fill="#ec4899"/>
+        <text x="19" y="23" class="sans" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">B</text>
+        <circle cx="28" cy="27" r="3.5" fill="#23a55a" stroke="#2b2d31" stroke-width="1.5"/>
+        <text x="40" y="22" class="sans" font-size="12" font-weight="600" fill="#dbdee1">Bob</text>
+      </g>
+
+      <!-- User Item 4: Elena -->
+      <g transform="translate(14, 170)">
+        <rect x="0" y="0" width="202" height="38" rx="6" fill="transparent"/>
+        <circle cx="19" cy="19" r="13" fill="#eab308"/>
+        <text x="19" y="23" class="sans" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">E</text>
+        <circle cx="28" cy="27" r="3.5" fill="#23a55a" stroke="#2b2d31" stroke-width="1.5"/>
+        <text x="40" y="22" class="sans" font-size="12" font-weight="600" fill="#dbdee1">Elena</text>
+      </g>
+
+      <!-- Sidebar Bottom Tip -->
+      <g transform="translate(14, 415)">
+        <text x="0" y="14" class="sans" font-size="10" fill="#949ba4">💡 Double-click any user</text>
+        <text x="0" y="27" class="sans" font-size="10" fill="#949ba4">to initiate private /w whisper</text>
+      </g>
+
+      <!-- MAIN CHAT PANEL (width 710) -->
+      <rect x="230" y="0" width="710" height="402" fill="#313338"/>
+
+      <!-- Channel Banner -->
+      <rect x="230" y="0" width="710" height="34" fill="#2b2d31" stroke="#35373c" stroke-width="1"/>
+      <text x="248" y="22" class="sans" font-size="13" font-weight="700" fill="#f2f3f5"># public-channel</text>
+      <text x="368" y="22" class="sans" font-size="11.5" fill="#949ba4">| Real-time multi-client broadcast (JSON protocol over TCP)</text>
+
+      <!-- Message Flow -->
+      <!-- Msg 1: System Info -->
+      <g transform="translate(248, 48)">
+        <rect x="0" y="0" width="674" height="28" rx="4" fill="#383424" stroke="#5a4d25" stroke-width="0.8"/>
+        <text x="12" y="18" class="mono" font-size="10.5" fill="#949ba4">[19:42:01]</text>
+        <text x="82" y="18" class="sans" font-size="11.5" font-weight="600" fill="#f0b232">ℹ️ SYSTEM:</text>
+        <text x="156" y="18" class="sans" font-size="11.5" fill="#dbdee1">Handshake complete. Registered as 'Daniel'. Dynamic user roster synchronized (4 users).</text>
+      </g>
+
+      <!-- Msg 2: Alice -->
+      <g transform="translate(248, 86)">
+        <circle cx="16" cy="16" r="14" fill="#5865f2"/>
+        <text x="16" y="20" class="sans" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">A</text>
+        <text x="40" y="14" class="sans" font-size="12.5" font-weight="700" fill="#5865f2">Alice</text>
+        <text x="78" y="14" class="mono" font-size="10.5" fill="#949ba4">19:42:15</text>
+        <text x="40" y="32" class="sans" font-size="12.5" fill="#dbdee1">Hey team! Have we verified the ExecutorService thread pool under concurrent load?</text>
+      </g>
+
+      <!-- Msg 3: Daniel (You) -->
+      <g transform="translate(248, 134)">
+        <circle cx="16" cy="16" r="14" fill="#22c55e"/>
+        <text x="16" y="20" class="sans" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">D</text>
+        <text x="40" y="14" class="sans" font-size="12.5" font-weight="700" fill="#57f287">Daniel</text>
+        <rect x="86" y="3" width="34" height="15" rx="3" fill="#1b4d2e"/>
+        <text x="103" y="14" class="sans" font-size="9.5" font-weight="700" fill="#57f287" text-anchor="middle">YOU</text>
+        <text x="128" y="14" class="mono" font-size="10.5" fill="#949ba4">19:42:30</text>
+        <text x="40" y="32" class="sans" font-size="12.5" fill="#dbdee1">Yes! 40 JUnit 5 integration tests passing with ConcurrentSkipListMap. Zero race conditions.</text>
+      </g>
+
+      <!-- Msg 4: Private Whisper from Elena -->
+      <g transform="translate(248, 182)">
+        <rect x="0" y="0" width="674" height="42" rx="4" fill="#382434" stroke="#eb459e" stroke-width="1.2"/>
+        <text x="12" y="17" class="mono" font-size="10.5" fill="#949ba4">[19:42:48]</text>
+        <rect x="78" y="5" width="142" height="18" rx="3" fill="#eb459e"/>
+        <text x="149" y="18" class="sans" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">🔒 PRIVATE FROM ELENA</text>
+        <text x="12" y="34" class="sans" font-size="12" fill="#f472b6">Reviewing the Big-O asymptotic runtime estimator now. The Ramanujan scaling is awesome!</text>
+      </g>
+
+      <!-- Msg 5: Bob -->
+      <g transform="translate(248, 236)">
+        <circle cx="16" cy="16" r="14" fill="#ec4899"/>
+        <text x="16" y="20" class="sans" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">B</text>
+        <text x="40" y="14" class="sans" font-size="12.5" font-weight="700" fill="#ec4899">Bob</text>
+        <text x="72" y="14" class="mono" font-size="10.5" fill="#949ba4">19:43:05</text>
+        <text x="40" y="32" class="sans" font-size="12.5" fill="#dbdee1">The FlatLaf Dark theme and message bubbles look super clean. Great UI!</text>
+      </g>
+
+      <!-- BOTTOM COMPOSER AREA (y=402, height=54) -->
+      <rect x="230" y="402" width="710" height="54" fill="#2b2d31" stroke="#35373c" stroke-width="1"/>
+
+      <!-- Input Field Box -->
+      <g transform="translate(246, 412)">
+        <rect x="0" y="0" width="580" height="34" rx="8" fill="#383a40" stroke="#4e5058" stroke-width="1"/>
+        <text x="14" y="22" class="sans" font-size="12.5" fill="#dbdee1">/w Elena Thanks! Running full asymptotic matrix benchmarks now...</text>
+        <!-- Blinking cursor -->
+        <rect x="472" y="10" width="2" height="15" fill="#5865f2"/>
+      </g>
+
+      <!-- Send Button -->
+      <g transform="translate(838, 412)">
+        <rect x="0" y="0" width="84" height="34" rx="8" fill="url(#sendBtnGrad)" stroke="#5865f2" stroke-width="1"/>
+        <text x="42" y="22" class="sans" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">Send ⏎</text>
+      </g>
+    </g>
+
+    <!-- Bottom Footer Status -->
+    <path d="M 20 568 L 960 568 L 960 590 Q 960 600 950 600 L 30 600 Q 20 600 20 590 Z" fill="#16181d" stroke="#2b2e35" stroke-width="1"/>
+    <circle cx="36" cy="584" r="4" fill="#34d399"/>
+    <text x="48" y="588" class="sans" font-size="11" fill="#8b949e">TCP Sockets • JSON Protocol (Jackson) • ExecutorService Thread Pool • JUnit 5 (40 Tests Passing)</text>
+    <text x="944" y="588" class="sans" font-size="11" fill="#5c6370" text-anchor="end">Java 17 • FlatLaf Dark v3.5.4</text>
+  </g>
+</svg>
