@@ -28,7 +28,7 @@ flowchart TD
         Pool["ExecutorService (Thread Pool)"]
         Handler1["ClientHandler (Sesión 1)"]
         Handler2["ClientHandler (Sesión 2)"]
-        Room["ChatRoom (ConcurrentHashMap)"]
+        Room["ChatRoom (ConcurrentMap)"]
     end
 
     GUI <-->|TCP Socket / JSON| Listener
