@@ -63,8 +63,10 @@ class ChatServerIntegrationTest {
         final List<List<String>> userListUpdates = Collections.synchronizedList(new ArrayList<>());
         final CountDownLatch connectLatch = new CountDownLatch(1);
         final CountDownLatch errorLatch = new CountDownLatch(1);
+        final CountDownLatch disconnectLatch = new CountDownLatch(1);
         final AtomicBoolean connected = new AtomicBoolean(false);
         String lastError = null;
+        String disconnectReason = null;
 
         @Override
         public void onConnected(String username) {
@@ -85,6 +87,8 @@ class ChatServerIntegrationTest {
         @Override
         public void onDisconnected(String reason) {
             connected.set(false);
+            disconnectReason = reason;
+            disconnectLatch.countDown();
         }
 
         @Override
@@ -154,8 +158,11 @@ class ChatServerIntegrationTest {
         }
         assertTrue(privateReceived, "Alice debió recibir el mensaje privado de Bob");
 
-        // 6. Desconexión de Bob y actualización de lista de usuarios en Alice
+        // 6. Desconexión voluntaria de Bob y actualización reactiva
         client2.disconnect();
+        assertTrue(listener2.disconnectLatch.await(3, TimeUnit.SECONDS), "Bob debió recibir evento onDisconnected");
+        assertFalse(listener2.connected.get());
+
         boolean listUpdated = false;
         for (int i = 0; i < 20; i++) {
             Thread.sleep(100);
@@ -169,5 +176,47 @@ class ChatServerIntegrationTest {
         assertTrue(listUpdated, "Alice debió recibir la actualización con solo su usuario tras salir Bob");
 
         client1.disconnect();
+        assertTrue(listener1.disconnectLatch.await(3, TimeUnit.SECONDS), "Alice debió recibir evento onDisconnected");
+        assertFalse(listener1.connected.get());
+    }
+
+    @Test
+    @DisplayName("Colisión de apodos insensible a mayúsculas y protocolo de handshake por red real")
+    void testCaseInsensitiveCollisionAndHandshakeValidation() throws Exception {
+        ChatClientConnection clientA = new ChatClientConnection();
+        RecordingListener listenerA = new RecordingListener();
+        assertTrue(clientA.connect("127.0.0.1", testPort, "David", listenerA));
+
+        // Intento con 'david' en minúsculas debe ser rechazado
+        ChatClientConnection clientB = new ChatClientConnection();
+        RecordingListener listenerB = new RecordingListener();
+        boolean rejected = clientB.connect("127.0.0.1", testPort, "david", listenerB);
+        assertFalse(rejected, "Debe rechazar 'david' porque 'David' ya está conectado");
+        assertTrue(listenerB.errorLatch.await(3, TimeUnit.SECONDS));
+        assertTrue(listenerB.lastError.contains("ya está en uso"));
+
+        // Al salir David, el apodo 'david' queda disponible
+        clientA.disconnect();
+        Thread.sleep(150);
+
+        ChatClientConnection clientC = new ChatClientConnection();
+        RecordingListener listenerC = new RecordingListener();
+        assertTrue(clientC.connect("127.0.0.1", testPort, "david", listenerC));
+        clientC.disconnect();
+    }
+
+    @Test
+    @DisplayName("Rechazo de mensaje inválido sin handshake previo")
+    void testHandshakeProtocolEnforcement() throws Exception {
+        try (java.net.Socket rawSocket = new java.net.Socket("127.0.0.1", testPort);
+             java.io.PrintWriter pw = new java.io.PrintWriter(rawSocket.getOutputStream(), true);
+             java.io.BufferedReader br = new java.io.BufferedReader(new java.io.InputStreamReader(rawSocket.getInputStream()))) {
+
+            // Enviar un mensaje de CHAT sin haberse registrado primero con JOIN
+            pw.println("{\"type\":\"CHAT\",\"content\":\"intento prematuro\"}");
+            String response = br.readLine();
+            assertNotNull(response);
+            assertTrue(response.contains("ERROR: Debes identificarte con un mensaje JOIN antes de interactuar."));
+        }
     }
 }

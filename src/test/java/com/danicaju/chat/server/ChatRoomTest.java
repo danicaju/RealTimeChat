@@ -174,6 +174,90 @@ class ChatRoomTest {
     }
 
     @Test
+    @DisplayName("Prevención de apodos duplicados con diferente uso de mayúsculas/minúsculas")
+    void testCaseInsensitiveDuplicateRejection() {
+        FakeClientHandler h1 = new FakeClientHandler(chatRoom);
+        FakeClientHandler h2 = new FakeClientHandler(chatRoom);
+        FakeClientHandler h3 = new FakeClientHandler(chatRoom);
+
+        assertTrue(chatRoom.registerClient("Alice", h1));
+        assertFalse(chatRoom.registerClient("alice", h2), "Debe rechazar 'alice' si 'Alice' ya existe");
+        assertFalse(chatRoom.registerClient("ALICE", h3), "Debe rechazar 'ALICE' si 'Alice' ya existe");
+
+        assertTrue(chatRoom.isUsernameTaken("alice"));
+        assertTrue(chatRoom.isUsernameTaken("ALICE"));
+        assertTrue(chatRoom.isUsernameTaken("Alice"));
+        assertEquals(1, chatRoom.getUserCount());
+        assertEquals(List.of("Alice"), chatRoom.getActiveUsers());
+    }
+
+    @Test
+    @DisplayName("Enrutamiento privado insensible a mayúsculas/minúsculas")
+    void testCaseInsensitivePrivateMessageDelivery() {
+        FakeClientHandler alice = new FakeClientHandler(chatRoom);
+        FakeClientHandler bob = new FakeClientHandler(chatRoom);
+
+        chatRoom.registerClient("Alice", alice);
+        chatRoom.registerClient("Bob", bob);
+
+        // Envío a 'alice' en minúsculas aunque se registró como 'Alice'
+        Message msg = Message.privateMsg("Bob", "alice", "Hola confidencial");
+        boolean delivered = chatRoom.sendPrivate("alice", msg);
+
+        assertTrue(delivered);
+        assertEquals(1, alice.receivedMessages.size());
+        assertTrue(alice.receivedMessages.get(0).contains("Hola confidencial"));
+    }
+
+    @Test
+    @DisplayName("Desregistro de usuario insensible a mayúsculas/minúsculas")
+    void testCaseInsensitiveUnregister() {
+        FakeClientHandler h1 = new FakeClientHandler(chatRoom);
+        chatRoom.registerClient("Alice", h1);
+        assertEquals(1, chatRoom.getUserCount());
+
+        boolean removed = chatRoom.unregisterClient("alice", h1);
+        assertTrue(removed);
+        assertFalse(chatRoom.isUsernameTaken("Alice"));
+        assertFalse(chatRoom.isUsernameTaken("alice"));
+        assertEquals(0, chatRoom.getUserCount());
+    }
+
+    @Test
+    @DisplayName("Estrés de alta concurrencia: múltiples hilos intentando registrar el mismo nickname a la vez")
+    void testConcurrentRegistrationContention() throws InterruptedException {
+        int threadsCount = 10;
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(threadsCount);
+        java.util.concurrent.CountDownLatch startLatch = new java.util.concurrent.CountDownLatch(1);
+        java.util.concurrent.CountDownLatch endLatch = new java.util.concurrent.CountDownLatch(threadsCount);
+        java.util.concurrent.atomic.AtomicInteger successCount = new java.util.concurrent.atomic.AtomicInteger(0);
+
+        for (int i = 0; i < threadsCount; i++) {
+            FakeClientHandler handler = new FakeClientHandler(chatRoom);
+            pool.submit(() -> {
+                try {
+                    startLatch.await();
+                    if (chatRoom.registerClient("contender_user", handler)) {
+                        successCount.incrementAndGet();
+                    }
+                } catch (InterruptedException ignored) {
+                } finally {
+                    endLatch.countDown();
+                }
+            });
+        }
+
+        // Liberar todos los hilos simultáneamente
+        startLatch.countDown();
+        assertTrue(endLatch.await(5, java.util.concurrent.TimeUnit.SECONDS));
+        pool.shutdown();
+
+        // Exactamente 1 debe haber tenido éxito
+        assertEquals(1, successCount.get(), "Exactamente 1 hilo debió registrar con éxito el apodo compartido");
+        assertEquals(1, chatRoom.getUserCount());
+    }
+
+    @Test
     @DisplayName("Cierre de todos los clientes en apagado de la sala (closeAll)")
     void testCloseAll() {
         FakeClientHandler h1 = new FakeClientHandler(chatRoom);
@@ -187,5 +271,15 @@ class ChatRoomTest {
         assertTrue(h1.wasClosed);
         assertTrue(h2.wasClosed);
         assertEquals(0, chatRoom.getUserCount());
+    }
+
+    @Test
+    @DisplayName("Tolerancia y robustez ante nulos en operaciones de sala")
+    void testNullTolerances() {
+        assertDoesNotThrow(() -> chatRoom.broadcast(null, null));
+        assertFalse(chatRoom.sendPrivate(null, Message.chat("a", "b")));
+        assertFalse(chatRoom.sendPrivate("alice", null));
+        assertFalse(chatRoom.isUsernameTaken(null));
+        assertFalse(chatRoom.unregisterClient(null, null));
     }
 }

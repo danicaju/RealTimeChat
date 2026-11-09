@@ -136,16 +136,16 @@ Notificaciones sobre el ciclo de vida de la sala, conexiones, desconexiones o al
 ## Características Principales
 
 * **Gestión Concurrente Eficiente:** Uso de `ExecutorService` (Thread Pool) en lugar de crear un hilo sin control por conexión, evitando el agotamiento de memoria del sistema operativo.
-* **Almacenamiento Atómico:** `ConcurrentHashMap` con operaciones atómicas (`putIfAbsent`, `remove`) para garantizar la unicidad de apodos e impedir condiciones de carrera.
-* **Apagado Limpio (Shutdown Hook):** `Runtime.getRuntime().addShutdownHook` asegura que los puertos del servidor y los flujos de red se cierren ordenadamente al detener el proceso.
-* **Cliente Gráfico FlatLaf Dark:** Interfaz Swing de estética moderna con:
+* **Almacenamiento Atómico e Insensible a Mayúsculas:** `ConcurrentSkipListMap` configurado con orden insensible a mayúsculas/minúsculas y operaciones atómicas (`putIfAbsent`, `remove`) para garantizar la unicidad estricta de apodos e impedir condiciones de carrera.
+* **Apagado Limpio y Gestión de Recursos (Shutdown Hook):** `Runtime.getRuntime().addShutdownHook` con desregistro controlado para asegurar que los sockets, flujos y pools de hilos se liberen sin fugas de memoria.
+* **Cliente Gráfico FlatLaf Dark:** Interfaz Swing de estética moderna inspirada en Discord/Slack:
   * Barra superior con indicador reactivo del estado de conexión y badge de nickname.
-  * Panel lateral dinámico con lista de usuarios conectados, avatars y badges de presencia.
+  * Panel lateral dinámico con lista de usuarios conectados, avatars y badges de presencia verde.
   * Área de chat con renderizado HTML, marcas de tiempo `[HH:mm:ss]`, colores temáticos para mensajes directos y mensajes de sistema.
   * Acceso directo de mensaje privado haciendo doble clic en cualquier usuario de la lista.
-  * Diálogo modal de conexión con validación integrada contra apodos repetidos.
-* **Cliente de Consola CLI:** Interfaz por línea de comandos ligera con ayuda integrada (`/help`), mensajes privados (`/w`) y refresco de miembros activos (`/list`).
-* **Batería de Pruebas Automatizadas:** 31 pruebas unitarias y de integración en JUnit 5 que validan serialización JSON, reglas de negocio de la sala de chat y flujo de red end-to-end con sockets efímeros reales.
+  * Diálogo modal de conexión con validación integrada y manejo reactivo de errores.
+* **Cliente de Consola CLI:** Interfaz por línea de comandos ligera con comandos rápidos (`/w`, `/list`, `/help`, `/quit`) y soporte para argumentos por terminal.
+* **Batería de Pruebas Automatizadas:** 40 pruebas unitarias y de integración en JUnit 5 que validan serialización JSON, reglas de negocio de la sala de chat, alta contención concurrente y flujo de red end-to-end con sockets efímeros reales.
 
 ---
 
@@ -153,7 +153,7 @@ Notificaciones sobre el ciclo de vida de la sala, conexiones, desconexiones o al
 
 ```text
 RealTimeChat/
-├── pom.xml                                    # Configuración Maven, dependencias y plugin Shade
+├── pom.xml                                    # Configuración Maven, dependencias y plugins (Shade, Exec)
 ├── README.md                                  # Documentación técnica del proyecto
 ├── LICENSE                                    # Licencia MIT
 └── src/
@@ -171,7 +171,7 @@ RealTimeChat/
     │       ├── ChatConsoleClient.java         # Cliente de terminal interactivo
     │       └── ChatGuiClient.java             # Cliente de escritorio Swing FlatLaf Dark
     └── test/java/com/danicaju/chat/
-        ├── ChatServerIntegrationTest.java     # Test E2E de comunicación cliente-servidor
+        ├── ChatServerIntegrationTest.java     # Tests E2E de comunicación cliente-servidor
         ├── model/
         │   └── MessageTest.java               # Tests unitarios del protocolo JSON
         └── server/
@@ -193,37 +193,45 @@ RealTimeChat/
 mvn clean test
 ```
 
-### 2. Generar el Paquete JAR Ejecutable
+### 2. Generar el Paquete JAR Ejecutable (Uber-JAR)
 
 ```bash
 mvn clean package
 ```
 
-El artefacto generado se ubicará en `target/realtimechat-1.0.0.jar` conteniendo todas las dependencias necesarias empaquetadas (Uber-JAR).
+El artefacto generado se ubicará en `target/realtimechat-1.0.0.jar` conteniendo todas las dependencias necesarias empaquetadas.
 
-### 3. Iniciar el Servidor
+### 3. Ejecución Directa mediante Maven (`exec:java`)
+
+El plugin `exec-maven-plugin` está preconfigurado con perfiles de ejecución directos:
 
 ```bash
-# Por defecto se iniciará en el puerto 5000
-java -cp target/realtimechat-1.0.0.jar com.danicaju.chat.server.ChatServer
+# Iniciar Servidor
+mvn exec:java@server
 
-# O indicando un puerto específico
-java -cp target/realtimechat-1.0.0.jar com.danicaju.chat.server.ChatServer 8080
+# Iniciar Cliente Gráfico (GUI FlatLaf)
+mvn exec:java@gui
+
+# Iniciar Cliente de Consola (CLI)
+mvn exec:java@cli
 ```
 
-### 4. Iniciar el Cliente de Escritorio (GUI FlatLaf)
+También es posible especificar la clase principal de forma explícita:
 
 ```bash
-# Ejecutar directamente el JAR principal (configurado por defecto en el Manifest)
+mvn exec:java -Dexec.mainClass="com.danicaju.chat.server.ChatServer"
+```
+
+### 4. Ejecución mediante el Paquete JAR
+
+```bash
+# Iniciar el Servidor (por defecto en puerto 5000 o indicando uno específico)
+java -cp target/realtimechat-1.0.0.jar com.danicaju.chat.server.ChatServer 5000
+
+# Iniciar el Cliente de Escritorio (GUI FlatLaf)
 java -jar target/realtimechat-1.0.0.jar
 
-# O especificando la clase principal
-java -cp target/realtimechat-1.0.0.jar com.danicaju.chat.client.ChatGuiClient
-```
-
-### 5. Iniciar el Cliente de Consola (CLI)
-
-```bash
+# Iniciar el Cliente de Consola (CLI)
 java -cp target/realtimechat-1.0.0.jar com.danicaju.chat.client.ChatConsoleClient
 ```
 

@@ -2,22 +2,24 @@ package com.danicaju.chat.server;
 
 import com.danicaju.chat.model.Message;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.regex.Pattern;
 
 /**
  * Gestor de la sala de chat centralizada.
  * Administra los clientes conectados de manera concurrente y atómica,
- * garantizando la unicidad de nombres de usuario y el enrutamiento seguro de mensajes.
+ * garantizando la unicidad de nombres de usuario (insensible a mayúsculas/minúsculas)
+ * y el enrutamiento seguro de mensajes.
  */
 public class ChatRoom {
 
     private static final Pattern USERNAME_PATTERN = Pattern.compile("^[a-zA-Z0-9_.-]{2,20}$");
 
-    private final ConcurrentMap<String, ClientHandler> clients = new ConcurrentHashMap<>();
+    private final ConcurrentMap<String, ClientHandler> clients = new ConcurrentSkipListMap<>(String.CASE_INSENSITIVE_ORDER);
 
     /**
      * Valida si un nombre de usuario cumple con los criterios de formato.
@@ -55,7 +57,7 @@ public class ChatRoom {
      * @return true si fue desregistrado
      */
     public boolean unregisterClient(String username, ClientHandler handler) {
-        if (username == null) {
+        if (username == null || handler == null) {
             return false;
         }
         return clients.remove(username.trim(), handler);
@@ -81,6 +83,9 @@ public class ChatRoom {
      * @param exclude Manejador a excluir (o null si se emite a todos sin excepción)
      */
     public void broadcast(Message message, ClientHandler exclude) {
+        if (message == null) {
+            return;
+        }
         String payload = message.toJson();
         for (ClientHandler client : clients.values()) {
             if (exclude == null || client != exclude) {
@@ -97,7 +102,7 @@ public class ChatRoom {
      * @return true si el destinatario existe y se le entregó el mensaje, false en caso contrario
      */
     public boolean sendPrivate(String targetUsername, Message message) {
-        if (targetUsername == null) {
+        if (targetUsername == null || message == null) {
             return false;
         }
         ClientHandler targetHandler = clients.get(targetUsername.trim());
@@ -114,7 +119,7 @@ public class ChatRoom {
      * @return Lista de nombres de usuario
      */
     public List<String> getActiveUsers() {
-        return clients.keySet().stream().sorted(String.CASE_INSENSITIVE_ORDER).toList();
+        return Collections.unmodifiableList(new ArrayList<>(clients.keySet()));
     }
 
     /**

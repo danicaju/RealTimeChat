@@ -93,6 +93,35 @@ class MessageTest {
         assertEquals("test", parsed.getContent());
     }
 
+    @Test
+    @DisplayName("Verificación de equals, hashCode y toString en Message")
+    void testEqualsAndHashCode() {
+        Message m1 = Message.chat("alice", "hola");
+        m1.setTimestamp(1000L);
+        Message m2 = Message.chat("alice", "hola");
+        m2.setTimestamp(1000L);
+
+        assertEquals(m1, m2);
+        assertEquals(m1.hashCode(), m2.hashCode());
+        assertTrue(m1.toString().contains("alice"));
+
+        Message m3 = Message.chat("bob", "hola");
+        m3.setTimestamp(1000L);
+        assertNotEquals(m1, m3);
+    }
+
+    @Test
+    @DisplayName("Manejo de lista de usuarios nula en Message")
+    void testNullUsersHandling() {
+        Message msg = new Message();
+        assertNotNull(msg.getUsers());
+        assertTrue(msg.getUsers().isEmpty());
+
+        msg.setUsers(null);
+        assertNotNull(msg.getUsers());
+        assertTrue(msg.getUsers().isEmpty());
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"", "   ", "\t\n"})
     @DisplayName("Rechazo de cadenas JSON vacías o nulas")

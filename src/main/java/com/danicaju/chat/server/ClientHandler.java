@@ -82,21 +82,22 @@ public class ClientHandler implements Runnable {
                         sendMessageRaw(Message.system("ERROR: El nickname debe contener entre 2 y 20 caracteres alfanuméricos (a-z, 0-9, _, -, .).").toJson());
                         continue;
                     }
-                    if (chatRoom.isUsernameTaken(candidate)) {
+
+                    // Intento de registro atómico
+                    if (!chatRoom.registerClient(candidate, this)) {
                         sendMessageRaw(Message.system("ERROR: El nombre de usuario '" + candidate + "' ya está en uso. Por favor, elige otro.").toJson());
                         continue;
                     }
 
-                    // Registro exitoso
                     this.username = candidate;
-                    if (chatRoom.registerClient(this.username, this)) {
-                        sendMessageRaw(Message.system("OK: Conectado correctamente como " + this.username).toJson());
-                        chatRoom.broadcast(Message.system("🟢 " + this.username + " se ha unido a la sala."), this);
-                        chatRoom.broadcastUserList();
-                        return true;
-                    }
+                    sendMessageRaw(Message.system("OK: Conectado correctamente como " + this.username).toJson());
+                    chatRoom.broadcast(Message.system("🟢 " + this.username + " se ha unido a la sala."), this);
+                    chatRoom.broadcastUserList();
+                    return true;
                 } else if (msg.getType() == MessageType.LEAVE) {
                     return false;
+                } else {
+                    sendMessageRaw(Message.system("ERROR: Debes identificarte con un mensaje JOIN antes de interactuar.").toJson());
                 }
             } catch (Exception e) {
                 sendMessageRaw(Message.system("ERROR: Se esperaba un mensaje de unión (JOIN) válido.").toJson());
@@ -116,10 +117,15 @@ public class ClientHandler implements Runnable {
         switch (msg.getType()) {
             case CHAT -> {
                 String content = msg.getContent() != null ? msg.getContent().trim() : "";
-                if (!content.isEmpty()) {
-                    Message broadcastMsg = Message.chat(this.username, content);
-                    chatRoom.broadcast(broadcastMsg, null);
+                if (content.isEmpty()) {
+                    return;
                 }
+                if (content.length() > 4000) {
+                    sendMessageRaw(Message.system("ERROR: El mensaje excede el límite de 4000 caracteres.").toJson());
+                    return;
+                }
+                Message broadcastMsg = Message.chat(this.username, content);
+                chatRoom.broadcast(broadcastMsg, null);
             }
             case PRIVATE -> {
                 String target = msg.getTarget() != null ? msg.getTarget().trim() : "";
@@ -130,6 +136,10 @@ public class ClientHandler implements Runnable {
                 }
                 if (target.equalsIgnoreCase(this.username)) {
                     sendMessageRaw(Message.system("No puedes enviarte un mensaje privado a ti mismo.").toJson());
+                    return;
+                }
+                if (content.length() > 4000) {
+                    sendMessageRaw(Message.system("ERROR: El mensaje privado excede el límite de 4000 caracteres.").toJson());
                     return;
                 }
 

@@ -21,6 +21,7 @@ public class ChatServer {
     private final ChatRoom chatRoom;
     private final ExecutorService threadPool;
     private ServerSocket serverSocket;
+    private Thread shutdownHookThread;
     private volatile boolean running = false;
 
     public ChatServer(int port) {
@@ -33,20 +34,27 @@ public class ChatServer {
      * Inicia el bucle de escucha del servidor.
      */
     public void start() throws IOException {
+        int boundPort;
         synchronized (this) {
             if (running) {
                 return;
             }
             this.serverSocket = new ServerSocket(port);
             this.running = true;
+            boundPort = serverSocket.getLocalPort();
         }
 
         System.out.println("==================================================");
-        System.out.println("  RealTimeChat Server - Iniciado en el puerto " + port);
+        System.out.println("  RealTimeChat Server - Iniciado en el puerto " + boundPort);
         System.out.println("==================================================");
 
         // Registro de gancho de apagado seguro (Shutdown Hook)
-        Runtime.getRuntime().addShutdownHook(new Thread(this::stop, "server-shutdown-hook"));
+        this.shutdownHookThread = new Thread(this::stop, "server-shutdown-hook");
+        try {
+            Runtime.getRuntime().addShutdownHook(this.shutdownHookThread);
+        } catch (IllegalStateException ignored) {
+            // La JVM ya se encuentra en fase de apagado
+        }
 
         try {
             while (running) {
@@ -79,6 +87,15 @@ public class ChatServer {
         }
         running = false;
         System.out.println("🔄 Cerrando servidor RealTimeChat...");
+
+        // Desregistrar gancho de apagado para evitar fugas
+        if (shutdownHookThread != null) {
+            try {
+                Runtime.getRuntime().removeShutdownHook(shutdownHookThread);
+            } catch (IllegalStateException ignored) {
+            }
+            shutdownHookThread = null;
+        }
 
         // Cerrar socket servidor principal
         try {
@@ -115,6 +132,9 @@ public class ChatServer {
     }
 
     public int getPort() {
+        if (serverSocket != null && !serverSocket.isClosed()) {
+            return serverSocket.getLocalPort();
+        }
         return port;
     }
 

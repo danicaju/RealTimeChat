@@ -13,6 +13,8 @@ import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+
 /**
  * Conexión cliente reutilizable y orientada a eventos para RealTimeChat.
  * Gestiona el ciclo de vida del socket TCP, el protocolo JSON y el hilo de recepción.
@@ -25,7 +27,7 @@ public class ChatClientConnection {
     private Thread listenerThread;
     private ChatEventListener eventListener;
     private String username;
-    private volatile boolean connected = false;
+    private final AtomicBoolean connected = new AtomicBoolean(false);
 
     /**
      * Establece la conexión con el servidor y realiza el handshake inicial con el nickname.
@@ -37,7 +39,7 @@ public class ChatClientConnection {
      * @return true si la autenticación fue exitosa; false en caso contrario
      */
     public synchronized boolean connect(String host, int port, String requestedUsername, ChatEventListener listener) {
-        if (connected) {
+        if (connected.get()) {
             disconnect();
         }
         this.eventListener = listener;
@@ -45,12 +47,13 @@ public class ChatClientConnection {
         try {
             socket = new Socket();
             socket.connect(new InetSocketAddress(host, port), 5000);
+            socket.setSoTimeout(5000); // Timeout protector durante handshake
 
             writer = new PrintWriter(new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8)), true);
             reader = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
 
             // Enviar solicitud JOIN
-            Message joinMessage = Message.join(requestedUsername);
+            Message joinMessage = Message.join(requestedUsername != null ? requestedUsername.trim() : "");
             writer.println(joinMessage.toJson());
 
             // Esperar respuesta inicial de validación
@@ -66,8 +69,9 @@ public class ChatClientConnection {
             Message initialMsg = Message.fromJson(responseLine);
             if (initialMsg.getType() == MessageType.SYSTEM && initialMsg.getContent() != null) {
                 if (initialMsg.getContent().startsWith("OK:")) {
-                    this.username = requestedUsername;
-                    this.connected = true;
+                    this.username = requestedUsername != null ? requestedUsername.trim() : "";
+                    this.connected.set(true);
+                    socket.setSoTimeout(0); // Quitar timeout para escucha continua indefinida
 
                     startListenerThread();
 
@@ -108,7 +112,7 @@ public class ChatClientConnection {
         listenerThread = new Thread(() -> {
             try {
                 String line;
-                while (connected && (line = reader.readLine()) != null) {
+                while (connected.get() && (line = reader.readLine()) != null) {
                     line = line.trim();
                     if (line.isEmpty()) {
                         continue;
@@ -130,12 +134,13 @@ public class ChatClientConnection {
                     }
                 }
             } catch (IOException e) {
-                // Caída de conexión
+                // Caída de conexión habitual
             } finally {
-                boolean wasConnected = connected;
                 close();
-                if (wasConnected && eventListener != null) {
-                    eventListener.onDisconnected("Conexión con el servidor finalizada.");
+                if (connected.compareAndSet(true, false)) {
+                    if (eventListener != null) {
+                        eventListener.onDisconnected("Conexión con el servidor finalizada.");
+                    }
                 }
             }
         }, "chat-client-listener");
@@ -148,7 +153,7 @@ public class ChatClientConnection {
      * Envía un mensaje público a la sala.
      */
     public synchronized void sendChatMessage(String content) {
-        if (!connected || writer == null || content == null || content.trim().isEmpty()) {
+        if (!isConnected() || writer == null || content == null || content.trim().isEmpty()) {
             return;
         }
         Message msg = Message.chat(this.username, content.trim());
@@ -159,7 +164,7 @@ public class ChatClientConnection {
      * Envía un mensaje privado a un usuario específico.
      */
     public synchronized void sendPrivateMessage(String target, String content) {
-        if (!connected || writer == null || target == null || content == null) {
+        if (!isConnected() || writer == null || target == null || content == null) {
             return;
         }
         Message msg = Message.privateMsg(this.username, target.trim(), content.trim());
@@ -170,7 +175,7 @@ public class ChatClientConnection {
      * Solicita al servidor refrescar la lista de usuarios.
      */
     public synchronized void requestUserList() {
-        if (!connected || writer == null) {
+        if (!isConnected() || writer == null) {
             return;
         }
         Message msg = new Message();
@@ -182,10 +187,9 @@ public class ChatClientConnection {
      * Notifica salida y desconecta el cliente de forma limpia.
      */
     public synchronized void disconnect() {
-        if (!connected) {
+        if (!connected.compareAndSet(true, false)) {
             return;
         }
-        connected = false;
         try {
             if (writer != null && this.username != null) {
                 Message leaveMsg = Message.leave(this.username);
@@ -194,13 +198,15 @@ public class ChatClientConnection {
         } catch (Exception ignored) {
         }
         close();
+        if (eventListener != null) {
+            eventListener.onDisconnected("Desconectado de la sala.");
+        }
     }
 
     /**
      * Cierra sockets y flujos subyacentes.
      */
     private void close() {
-        connected = false;
         try {
             if (writer != null) {
                 writer.close();
@@ -222,7 +228,7 @@ public class ChatClientConnection {
     }
 
     public boolean isConnected() {
-        return connected;
+        return connected.get();
     }
 
     public String getUsername() {

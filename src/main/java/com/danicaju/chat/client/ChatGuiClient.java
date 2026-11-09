@@ -207,15 +207,15 @@ public class ChatGuiClient extends JFrame implements ChatEventListener {
         htmlDoc = (HTMLDocument) editorKit.createDefaultDocument();
         chatPane.setDocument(htmlDoc);
 
-        // Estilos CSS integrados
+        // Estilos CSS integrados compatibles con HTMLEditorKit de Swing
         String baseCss = "<style>" +
                 "body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; font-size: 13px; color: #dbdee1; margin: 10px; background-color: #313338; }" +
                 ".msg-row { margin-bottom: 8px; line-height: 1.4; }" +
                 ".timestamp { color: #949ba4; font-size: 11px; margin-right: 6px; font-weight: normal; }" +
                 ".sender-other { color: #5865f2; font-weight: bold; font-size: 13px; }" +
                 ".sender-me { color: #57f287; font-weight: bold; font-size: 13px; }" +
-                ".system-msg { color: #f0b232; font-style: italic; background-color: rgba(240, 178, 50, 0.1); padding: 4px 8px; border-radius: 4px; display: inline-block; }" +
-                ".private-msg { color: #eb459e; background-color: rgba(235, 69, 158, 0.12); padding: 6px 10px; border-left: 3px solid #eb459e; border-radius: 4px; }" +
+                ".system-msg { color: #f0b232; font-style: italic; background-color: #383424; padding: 4px 8px; }" +
+                ".private-msg { color: #eb459e; background-color: #382434; padding: 6px 10px; border-left: 3px solid #eb459e; }" +
                 ".body-text { color: #dbdee1; word-wrap: break-word; }" +
                 "</style><div id='chat-flow'></div>";
         try {
@@ -275,7 +275,18 @@ public class ChatGuiClient extends JFrame implements ChatEventListener {
 
     private void sendMessageFromInput() {
         String text = inputField.getText().trim();
-        if (text.isEmpty() || !connection.isConnected()) {
+        if (text.isEmpty()) {
+            return;
+        }
+
+        if (!connection.isConnected()) {
+            appendSystemHtml("No estás conectado. Pulsa 'Conectar / Cambiar' para iniciar sesión.");
+            return;
+        }
+
+        if (text.equalsIgnoreCase("/help") || text.equalsIgnoreCase("/ayuda")) {
+            appendSystemHtml("Comandos disponibles: /w &lt;usuario&gt; &lt;mensaje&gt;, /list, /help, /quit");
+            inputField.setText("");
             return;
         }
 
@@ -306,14 +317,25 @@ public class ChatGuiClient extends JFrame implements ChatEventListener {
         inputField.setText("");
     }
 
+    private JDialog activeDialog;
+
     /**
      * Muestra el diálogo modal para configurar IP, puerto y nickname.
      */
     public void showConnectionDialog() {
         JDialog dialog = new JDialog(this, "Conexión a RealTimeChat", true);
+        this.activeDialog = dialog;
         dialog.setSize(380, 280);
         dialog.setLocationRelativeTo(this);
         dialog.setResizable(false);
+        dialog.addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosed(WindowEvent e) {
+                if (activeDialog == dialog) {
+                    activeDialog = null;
+                }
+            }
+        });
 
         JPanel panel = new JPanel(new GridBagLayout());
         panel.setBorder(new EmptyBorder(20, 24, 20, 24));
@@ -382,6 +404,8 @@ public class ChatGuiClient extends JFrame implements ChatEventListener {
                         currentServerPort = port;
                         currentUsername = user;
                         dialog.dispose();
+                    } else {
+                        errorLabel.setText("No se pudo conectar. Revisa nickname o servidor.");
                     }
                 });
             }).start();
@@ -419,7 +443,8 @@ public class ChatGuiClient extends JFrame implements ChatEventListener {
         return input.replace("&", "&amp;")
                 .replace("<", "&lt;")
                 .replace(">", "&gt;")
-                .replace("\"", "&quot;");
+                .replace("\"", "&quot;")
+                .replace("\n", "<br/>");
     }
 
     // --- Implementación de ChatEventListener ---
@@ -500,7 +525,8 @@ public class ChatGuiClient extends JFrame implements ChatEventListener {
     public void onError(String errorMessage) {
         SwingUtilities.invokeLater(() -> {
             appendSystemHtml("ERROR: " + errorMessage);
-            JOptionPane.showMessageDialog(this, errorMessage, "Aviso de RealTimeChat", JOptionPane.WARNING_MESSAGE);
+            Component parentComp = (activeDialog != null && activeDialog.isShowing()) ? activeDialog : this;
+            JOptionPane.showMessageDialog(parentComp, errorMessage, "Aviso de RealTimeChat", JOptionPane.WARNING_MESSAGE);
         });
     }
 
@@ -560,6 +586,18 @@ public class ChatGuiClient extends JFrame implements ChatEventListener {
         FlatDarkLaf.setup();
         SwingUtilities.invokeLater(() -> {
             ChatGuiClient gui = new ChatGuiClient();
+            if (args != null && args.length > 0 && !args[0].trim().isEmpty()) {
+                gui.currentServerHost = args[0].trim();
+            }
+            if (args != null && args.length > 1 && !args[1].trim().isEmpty()) {
+                try {
+                    gui.currentServerPort = Integer.parseInt(args[1].trim());
+                } catch (NumberFormatException ignored) {
+                }
+            }
+            if (args != null && args.length > 2 && !args[2].trim().isEmpty()) {
+                gui.currentUsername = args[2].trim();
+            }
             gui.setVisible(true);
             gui.showConnectionDialog();
         });

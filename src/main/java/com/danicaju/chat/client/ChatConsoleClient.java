@@ -27,28 +27,46 @@ public class ChatConsoleClient implements ChatEventListener {
     }
 
     public void run() {
+        run(new String[0]);
+    }
+
+    public void run(String[] args) {
         System.out.println("==================================================");
         System.out.println("         RealTimeChat - Consola Interactiva       ");
         System.out.println("==================================================");
 
-        System.out.print("Servidor [127.0.0.1]: ");
-        String hostInput = scanner.nextLine().trim();
-        String host = hostInput.isEmpty() ? "127.0.0.1" : hostInput;
+        String host = args != null && args.length > 0 && !args[0].trim().isEmpty() ? args[0].trim() : "";
+        if (host.isEmpty()) {
+            System.out.print("Servidor [127.0.0.1]: ");
+            String hostInput = scanner.hasNextLine() ? scanner.nextLine().trim() : "";
+            host = hostInput.isEmpty() ? "127.0.0.1" : hostInput;
+        }
 
-        System.out.print("Puerto [5000]: ");
-        String portInput = scanner.nextLine().trim();
         int port = 5000;
-        if (!portInput.isEmpty()) {
+        if (args != null && args.length > 1 && !args[1].trim().isEmpty()) {
             try {
-                port = Integer.parseInt(portInput);
+                port = Integer.parseInt(args[1].trim());
             } catch (NumberFormatException e) {
-                System.out.println("Puerto inválido, usando 5000 por defecto.");
+                System.out.println("Puerto inválido en argumentos, usando 5000 por defecto.");
+            }
+        } else {
+            System.out.print("Puerto [5000]: ");
+            String portInput = scanner.hasNextLine() ? scanner.nextLine().trim() : "";
+            if (!portInput.isEmpty()) {
+                try {
+                    port = Integer.parseInt(portInput);
+                } catch (NumberFormatException e) {
+                    System.out.println("Puerto inválido, usando 5000 por defecto.");
+                }
             }
         }
 
-        String username = "";
+        String username = args != null && args.length > 2 && !args[2].trim().isEmpty() ? args[2].trim() : "";
         while (username.isEmpty()) {
             System.out.print("Introduce tu nombre de usuario (alfanumérico, 2-20 caracteres): ");
+            if (!scanner.hasNextLine()) {
+                return;
+            }
             username = scanner.nextLine().trim();
         }
 
@@ -59,7 +77,11 @@ public class ChatConsoleClient implements ChatEventListener {
             return;
         }
 
-        Runtime.getRuntime().addShutdownHook(new Thread(connection::disconnect, "console-client-shutdown"));
+        Thread shutdownHook = new Thread(connection::disconnect, "console-client-shutdown");
+        try {
+            Runtime.getRuntime().addShutdownHook(shutdownHook);
+        } catch (IllegalStateException ignored) {
+        }
 
         printHelp();
 
@@ -178,6 +200,6 @@ public class ChatConsoleClient implements ChatEventListener {
     }
 
     public static void main(String[] args) {
-        new ChatConsoleClient().run();
+        new ChatConsoleClient().run(args);
     }
 }

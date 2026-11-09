@@ -88,6 +88,43 @@
                     </execution>
                 </executions>
             </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>3.2.0</version>
+                <configuration>
+                    <mainClass>com.danicaju.chat.client.ChatGuiClient</mainClass>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>server</id>
+                        <goals>
+                            <goal>java</goal>
+                        </goals>
+                        <configuration>
+                            <mainClass>com.danicaju.chat.server.ChatServer</mainClass>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>gui</id>
+                        <goals>
+                            <goal>java</goal>
+                        </goals>
+                        <configuration>
+                            <mainClass>com.danicaju.chat.client.ChatGuiClient</mainClass>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>cli</id>
+                        <goals>
+                            <goal>java</goal>
+                        </goals>
+                        <configuration>
+                            <mainClass>com.danicaju.chat.client.ChatConsoleClient</mainClass>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
         </plugins>
     </build>
 </project>
