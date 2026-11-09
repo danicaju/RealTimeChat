@@ -1,8 +1,13 @@
 # Archivos compilados de Java
 *.class
 
-# Archivos de datos locales del juego (evita subir tu historial de partidas al repo)
-partidas.txt
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+release.properties
+dependency-reduced-pom.xml
 
 # Archivos de empaquetado
 *.jar
@@ -37,6 +42,9 @@ out/
 
 # Carpetas y archivos de VS Code
 .vscode/
+
+# Archivos de datos locales
+partidas.txt
 
 # Archivos ocultos generados por el Sistema Operativo (macOS / Windows)
 .DS_Store
