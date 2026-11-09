@@ -217,5 +217,5 @@ The test suite contains **40 automated tests** implemented with JUnit 5, coverin
 ---
 
 <p align="center">
-  <sub>Developed by <b>Daniel Casado Juan</b> &middot; Universitat de les Illes Balears (UIB)</sub>
+  <sub>Developed by <b>Daniel Casado Juan</b> | Universitat de les Illes Balears (UIB)</sub>
 </p>

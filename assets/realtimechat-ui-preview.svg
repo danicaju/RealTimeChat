@@ -107,7 +107,7 @@
 
       <!-- Sidebar Bottom Tip -->
       <g transform="translate(14, 415)">
-        <text x="0" y="14" class="sans" font-size="10" fill="#949ba4">💡 Double-click any user</text>
+        <text x="0" y="14" class="sans" font-size="10" fill="#949ba4">Tip: Double-click any user</text>
         <text x="0" y="27" class="sans" font-size="10" fill="#949ba4">to initiate private /w whisper</text>
       </g>
 
@@ -124,7 +124,7 @@
       <g transform="translate(248, 48)">
         <rect x="0" y="0" width="674" height="28" rx="4" fill="#383424" stroke="#5a4d25" stroke-width="0.8"/>
         <text x="12" y="18" class="mono" font-size="10.5" fill="#949ba4">[19:42:01]</text>
-        <text x="82" y="18" class="sans" font-size="11.5" font-weight="600" fill="#f0b232">ℹ️ SYSTEM:</text>
+        <text x="82" y="18" class="sans" font-size="11.5" font-weight="600" fill="#f0b232">[SYSTEM]:</text>
         <text x="156" y="18" class="sans" font-size="11.5" fill="#dbdee1">Handshake complete. Registered as 'Daniel'. Dynamic user roster synchronized (4 users).</text>
       </g>
 
@@ -153,7 +153,7 @@
         <rect x="0" y="0" width="674" height="42" rx="4" fill="#382434" stroke="#eb459e" stroke-width="1.2"/>
         <text x="12" y="17" class="mono" font-size="10.5" fill="#949ba4">[19:42:48]</text>
         <rect x="78" y="5" width="142" height="18" rx="3" fill="#eb459e"/>
-        <text x="149" y="18" class="sans" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">🔒 PRIVATE FROM ELENA</text>
+        <text x="149" y="18" class="sans" font-size="10" font-weight="700" fill="#ffffff" text-anchor="middle">[PRIVATE] FROM ELENA</text>
         <text x="12" y="34" class="sans" font-size="12" fill="#f472b6">Reviewing the Big-O asymptotic runtime estimator now. The Ramanujan scaling is awesome!</text>
       </g>
 
@@ -180,14 +180,14 @@
       <!-- Send Button -->
       <g transform="translate(838, 412)">
         <rect x="0" y="0" width="84" height="34" rx="8" fill="url(#sendBtnGrad)" stroke="#5865f2" stroke-width="1"/>
-        <text x="42" y="22" class="sans" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">Send ⏎</text>
+        <text x="42" y="22" class="sans" font-size="12" font-weight="700" fill="#ffffff" text-anchor="middle">Send</text>
       </g>
     </g>
 
     <!-- Bottom Footer Status -->
     <path d="M 20 568 L 960 568 L 960 590 Q 960 600 950 600 L 30 600 Q 20 600 20 590 Z" fill="#16181d" stroke="#2b2e35" stroke-width="1"/>
     <circle cx="36" cy="584" r="4" fill="#34d399"/>
-    <text x="48" y="588" class="sans" font-size="11" fill="#8b949e">TCP Sockets • JSON Protocol (Jackson) • ExecutorService Thread Pool • JUnit 5 (40 Tests Passing)</text>
-    <text x="944" y="588" class="sans" font-size="11" fill="#5c6370" text-anchor="end">Java 17 • FlatLaf Dark v3.5.4</text>
+    <text x="48" y="588" class="sans" font-size="11" fill="#8b949e">TCP Sockets | JSON Protocol (Jackson) | ExecutorService Thread Pool | JUnit 5 (40 Tests Passing)</text>
+    <text x="944" y="588" class="sans" font-size="11" fill="#5c6370" text-anchor="end">Java 17 | FlatLaf Dark v3.5.4</text>
   </g>
 </svg>

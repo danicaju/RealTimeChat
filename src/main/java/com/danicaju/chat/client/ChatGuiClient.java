@@ -130,7 +130,8 @@ public class ChatGuiClient extends JFrame implements ChatEventListener {
         JPanel rightStatusPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 12, 0));
         rightStatusPanel.setOpaque(false);
 
-        statusLabel = new JLabel("● Desconectado");
+        statusLabel = new JLabel("Desconectado", new StatusDotIcon(new Color(237, 66, 69)), JLabel.LEFT);
+        statusLabel.setIconTextGap(6);
         statusLabel.setFont(new Font("Segoe UI", Font.BOLD, 13));
         statusLabel.setForeground(new Color(237, 66, 69)); // Rojo
 
@@ -434,7 +435,7 @@ public class ChatGuiClient extends JFrame implements ChatEventListener {
     private void appendSystemHtml(String text) {
         String time = TIME_FORMATTER.format(Instant.now());
         String html = "<div class='msg-row'><span class='timestamp'>[" + time + "]</span> " +
-                "<span class='system-msg'>ℹ️ " + escapeHtml(text) + "</span></div>";
+                "<span class='system-msg'>[SISTEMA] " + escapeHtml(text) + "</span></div>";
         appendHtml(html);
     }
 
@@ -453,7 +454,7 @@ public class ChatGuiClient extends JFrame implements ChatEventListener {
     public void onConnected(String username) {
         SwingUtilities.invokeLater(() -> {
             this.currentUsername = username;
-            statusLabel.setText("● En línea: " + username);
+            statusLabel.setText("En línea: " + username); statusLabel.setIcon(new StatusDotIcon(new Color(87, 242, 135)));
             statusLabel.setForeground(new Color(87, 242, 135)); // Verde Discord
             appendSystemHtml("¡Conexión establecida como '" + username + "'!");
             inputField.requestFocusInWindow();
@@ -482,7 +483,7 @@ public class ChatGuiClient extends JFrame implements ChatEventListener {
                 String sender = message.getSender();
                 String target = message.getTarget();
                 boolean isMe = currentUsername != null && currentUsername.equalsIgnoreCase(sender);
-                String label = isMe ? "🔒 Privado para @" + escapeHtml(target) : "🔒 Privado de @" + escapeHtml(sender);
+                String label = isMe ? "[PRIVADO PARA @" + escapeHtml(target) + "]" : "[PRIVADO DE @" + escapeHtml(sender) + "]";
                 String html = "<div class='msg-row'><div class='private-msg'><span class='timestamp'>[" + time + "]</span> " +
                         "<b>" + label + ":</b> " +
                         "<span class='body-text'>" + escapeHtml(message.getContent()) + "</span></div></div>";
@@ -513,7 +514,7 @@ public class ChatGuiClient extends JFrame implements ChatEventListener {
     @Override
     public void onDisconnected(String reason) {
         SwingUtilities.invokeLater(() -> {
-            statusLabel.setText("● Desconectado");
+            statusLabel.setText("Desconectado"); statusLabel.setIcon(new StatusDotIcon(new Color(237, 66, 69)));
             statusLabel.setForeground(new Color(237, 66, 69));
             userListModel.clear();
             userCountLabel.setText("USUARIOS EN LÍNEA (0)");
@@ -602,4 +603,23 @@ public class ChatGuiClient extends JFrame implements ChatEventListener {
             gui.showConnectionDialog();
         });
     }
+
+    /**
+     * Icono vectorial que dibuja un indicador circular nitido sin depender de fuentes de caracteres.
+     */
+    private static class StatusDotIcon implements javax.swing.Icon {
+        private final Color color;
+        public StatusDotIcon(Color color) { this.color = color; }
+        @Override
+        public void paintIcon(Component c, Graphics g, int x, int y) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setColor(color);
+            g2.fillOval(x + 1, y + 2, 9, 9);
+            g2.dispose();
+        }
+        @Override public int getIconWidth() { return 13; }
+        @Override public int getIconHeight() { return 13; }
+    }
+
 }

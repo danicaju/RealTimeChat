@@ -73,7 +73,7 @@ public class ChatConsoleClient implements ChatEventListener {
         System.out.println("Conectando a " + host + ":" + port + " como '" + username + "'...");
         boolean connected = connection.connect(host, port, username, this);
         if (!connected) {
-            System.err.println("❌ No se pudo establecer la sesión con el servidor.");
+            System.err.println("[ERROR] No se pudo establecer la sesión con el servidor.");
             return;
         }
 
@@ -143,7 +143,7 @@ public class ChatConsoleClient implements ChatEventListener {
 
     @Override
     public void onConnected(String username) {
-        System.out.println("✅ ¡Conectado exitosamente como " + username + "!");
+        System.out.println("[OK] Conectado exitosamente como " + username + "!");
     }
 
     @Override
@@ -166,16 +166,16 @@ public class ChatConsoleClient implements ChatEventListener {
                 String sender = message.getSender();
                 String target = message.getTarget();
                 if (connection.getUsername() != null && connection.getUsername().equalsIgnoreCase(sender)) {
-                    System.out.println(time + " 🔒 [Privado a " + target + "]: " + message.getContent());
+                    System.out.println(time + " [PRIVADO a " + target + "]: " + message.getContent());
                 } else {
-                    System.out.println(time + " 🔒 [Privado de " + sender + "]: " + message.getContent());
+                    System.out.println(time + " [PRIVADO de " + sender + "]: " + message.getContent());
                 }
             }
             case SYSTEM -> {
-                System.out.println(time + " ℹ️  [SISTEMA] " + message.getContent());
+                System.out.println(time + " [SISTEMA] " + message.getContent());
             }
             case LEAVE -> {
-                System.out.println(time + " 👋 " + message.getSender() + " ha salido.");
+                System.out.println(time + " [SALIDA] " + message.getSender() + " ha salido.");
             }
             default -> {
             }
@@ -185,18 +185,18 @@ public class ChatConsoleClient implements ChatEventListener {
     @Override
     public void onUserListUpdated(List<String> users) {
         String time = formatTimestamp(System.currentTimeMillis());
-        System.out.println(time + " 👥 Usuarios en línea (" + users.size() + "): " + String.join(", ", users));
+        System.out.println(time + " [USUARIOS] Usuarios en línea (" + users.size() + "): " + String.join(", ", users));
     }
 
     @Override
     public void onDisconnected(String reason) {
-        System.out.println("⚠️ " + reason);
+        System.out.println("[AVISO] " + reason);
         running = false;
     }
 
     @Override
     public void onError(String errorMessage) {
-        System.err.println("❌ " + errorMessage);
+        System.err.println("[ERROR] " + errorMessage);
     }
 
     public static void main(String[] args) {
