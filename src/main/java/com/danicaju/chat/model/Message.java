@@ -15,11 +15,14 @@ import java.util.Objects;
 
 /**
  * Representa la unidad fundamental de datos intercambiada en el protocolo de RealTimeChat.
- * Se serializa y deserializa en formato JSON mediante Jackson.
+ * Soporta canales, historial de mensajes, estados de escritura (typing), perfiles de usuario
+ * y mensajería pública/privada en formato JSON mediante Jackson.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class Message {
+
+    public static final String DEFAULT_CHANNEL = "#general";
 
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .registerModule(new JavaTimeModule());
@@ -28,7 +31,11 @@ public class Message {
     private String sender;
     private String target;
     private String content;
+    private String channel;
     private List<String> users;
+    private List<String> channels;
+    private List<Message> history;
+    private UserProfile profile;
     private long timestamp;
 
     public Message() {
@@ -54,8 +61,13 @@ public class Message {
     }
 
     public static Message chat(String sender, String content) {
+        return chat(DEFAULT_CHANNEL, sender, content);
+    }
+
+    public static Message chat(String channel, String sender, String content) {
         Message msg = new Message();
         msg.setType(MessageType.CHAT);
+        msg.setChannel(channel != null && !channel.trim().isEmpty() ? channel.trim() : DEFAULT_CHANNEL);
         msg.setSender(sender);
         msg.setContent(content);
         return msg;
@@ -77,6 +89,14 @@ public class Message {
         return msg;
     }
 
+    public static Message userList(String channel, List<String> users) {
+        Message msg = new Message();
+        msg.setType(MessageType.USER_LIST);
+        msg.setChannel(channel);
+        msg.setUsers(users);
+        return msg;
+    }
+
     public static Message leave(String sender) {
         Message msg = new Message();
         msg.setType(MessageType.LEAVE);
@@ -88,6 +108,76 @@ public class Message {
         Message msg = new Message();
         msg.setType(MessageType.SYSTEM);
         msg.setContent(content);
+        return msg;
+    }
+
+    public static Message system(String channel, String content) {
+        Message msg = new Message();
+        msg.setType(MessageType.SYSTEM);
+        msg.setChannel(channel);
+        msg.setContent(content);
+        return msg;
+    }
+
+    public static Message joinChannel(String sender, String channel) {
+        Message msg = new Message();
+        msg.setType(MessageType.JOIN_CHANNEL);
+        msg.setSender(sender);
+        msg.setChannel(channel);
+        return msg;
+    }
+
+    public static Message channelList(List<String> channels) {
+        Message msg = new Message();
+        msg.setType(MessageType.CHANNEL_LIST);
+        msg.setChannels(channels);
+        return msg;
+    }
+
+    public static Message history(String channel, List<Message> history) {
+        Message msg = new Message();
+        msg.setType(MessageType.HISTORY);
+        msg.setChannel(channel);
+        msg.setHistory(history);
+        return msg;
+    }
+
+    public static Message typingStart(String sender, String channel) {
+        Message msg = new Message();
+        msg.setType(MessageType.TYPING_START);
+        msg.setSender(sender);
+        msg.setChannel(channel);
+        return msg;
+    }
+
+    public static Message typingStop(String sender, String channel) {
+        Message msg = new Message();
+        msg.setType(MessageType.TYPING_STOP);
+        msg.setSender(sender);
+        msg.setChannel(channel);
+        return msg;
+    }
+
+    public static Message profileUpdate(String sender, UserProfile profile) {
+        Message msg = new Message();
+        msg.setType(MessageType.PROFILE_UPDATE);
+        msg.setSender(sender);
+        msg.setProfile(profile);
+        return msg;
+    }
+
+    public static Message profileRequest(String sender, String target) {
+        Message msg = new Message();
+        msg.setType(MessageType.PROFILE_REQUEST);
+        msg.setSender(sender);
+        msg.setTarget(target);
+        return msg;
+    }
+
+    public static Message profileResponse(UserProfile profile) {
+        Message msg = new Message();
+        msg.setType(MessageType.PROFILE_RESPONSE);
+        msg.setProfile(profile);
         return msg;
     }
 
@@ -142,12 +232,44 @@ public class Message {
         this.content = content;
     }
 
+    public String getChannel() {
+        return channel;
+    }
+
+    public void setChannel(String channel) {
+        this.channel = channel;
+    }
+
     public List<String> getUsers() {
         return users != null ? Collections.unmodifiableList(users) : Collections.emptyList();
     }
 
     public void setUsers(List<String> users) {
         this.users = users != null ? new ArrayList<>(users) : null;
+    }
+
+    public List<String> getChannels() {
+        return channels != null ? Collections.unmodifiableList(channels) : Collections.emptyList();
+    }
+
+    public void setChannels(List<String> channels) {
+        this.channels = channels != null ? new ArrayList<>(channels) : null;
+    }
+
+    public List<Message> getHistory() {
+        return history != null ? Collections.unmodifiableList(history) : Collections.emptyList();
+    }
+
+    public void setHistory(List<Message> history) {
+        this.history = history != null ? new ArrayList<>(history) : null;
+    }
+
+    public UserProfile getProfile() {
+        return profile;
+    }
+
+    public void setProfile(UserProfile profile) {
+        this.profile = profile;
     }
 
     public long getTimestamp() {
@@ -168,12 +290,16 @@ public class Message {
                 Objects.equals(sender, message.sender) &&
                 Objects.equals(target, message.target) &&
                 Objects.equals(content, message.content) &&
-                Objects.equals(users, message.users);
+                Objects.equals(channel, message.channel) &&
+                Objects.equals(users, message.users) &&
+                Objects.equals(channels, message.channels) &&
+                Objects.equals(history, message.history) &&
+                Objects.equals(profile, message.profile);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(type, sender, target, content, users, timestamp);
+        return Objects.hash(type, sender, target, content, channel, users, channels, history, profile, timestamp);
     }
 
     @Override
@@ -183,7 +309,11 @@ public class Message {
                 ", sender='" + sender + '\'' +
                 ", target='" + target + '\'' +
                 ", content='" + content + '\'' +
+                ", channel='" + channel + '\'' +
                 ", users=" + users +
+                ", channels=" + channels +
+                ", history=" + (history != null ? history.size() : 0) +
+                ", profile=" + profile +
                 ", timestamp=" + timestamp +
                 '}';
     }

@@ -39,6 +39,7 @@ class MessageTest {
         assertEquals(MessageType.CHAT, parsed.getType());
         assertEquals("bob", parsed.getSender());
         assertEquals("¡Hola a todos!", parsed.getContent());
+        assertEquals(Message.DEFAULT_CHANNEL, parsed.getChannel());
     }
 
     @Test
@@ -83,6 +84,74 @@ class MessageTest {
     }
 
     @Test
+    @DisplayName("Mensajes de canales y cambio de canal (JOIN_CHANNEL, CHANNEL_LIST)")
+    void testChannelMessages() throws IOException {
+        Message joinChan = Message.joinChannel("alice", "#ia-computacion");
+        Message parsedJoin = Message.fromJson(joinChan.toJson());
+        assertEquals(MessageType.JOIN_CHANNEL, parsedJoin.getType());
+        assertEquals("alice", parsedJoin.getSender());
+        assertEquals("#ia-computacion", parsedJoin.getChannel());
+
+        List<String> channels = List.of("#general", "#ia-computacion", "#random");
+        Message chanList = Message.channelList(channels);
+        Message parsedList = Message.fromJson(chanList.toJson());
+        assertEquals(MessageType.CHANNEL_LIST, parsedList.getType());
+        assertEquals(channels, parsedList.getChannels());
+    }
+
+    @Test
+    @DisplayName("Mensajes de búfer de reproducción e historial (HISTORY)")
+    void testHistoryMessage() throws IOException {
+        List<Message> history = List.of(
+                Message.chat("#ia-computacion", "alice", "Msg 1"),
+                Message.chat("#ia-computacion", "bob", "Msg 2")
+        );
+        Message histMsg = Message.history("#ia-computacion", history);
+        Message parsedHist = Message.fromJson(histMsg.toJson());
+
+        assertEquals(MessageType.HISTORY, parsedHist.getType());
+        assertEquals("#ia-computacion", parsedHist.getChannel());
+        assertEquals(2, parsedHist.getHistory().size());
+        assertEquals("Msg 1", parsedHist.getHistory().get(0).getContent());
+    }
+
+    @Test
+    @DisplayName("Eventos de estado de escritura (TYPING_START, TYPING_STOP)")
+    void testTypingEvents() throws IOException {
+        Message start = Message.typingStart("alice", "#general");
+        Message parsedStart = Message.fromJson(start.toJson());
+        assertEquals(MessageType.TYPING_START, parsedStart.getType());
+        assertEquals("alice", parsedStart.getSender());
+        assertEquals("#general", parsedStart.getChannel());
+
+        Message stop = Message.typingStop("alice", "#general");
+        Message parsedStop = Message.fromJson(stop.toJson());
+        assertEquals(MessageType.TYPING_STOP, parsedStop.getType());
+    }
+
+    @Test
+    @DisplayName("Eventos de personalización de perfil (PROFILE_UPDATE, PROFILE_REQUEST, PROFILE_RESPONSE)")
+    void testProfileEvents() throws IOException {
+        UserProfile profile = new UserProfile("alice", "Bio Alice", "cosmic", "gradient-cyber");
+        Message update = Message.profileUpdate("alice", profile);
+        Message parsedUpdate = Message.fromJson(update.toJson());
+
+        assertEquals(MessageType.PROFILE_UPDATE, parsedUpdate.getType());
+        assertEquals("alice", parsedUpdate.getSender());
+        assertEquals(profile, parsedUpdate.getProfile());
+
+        Message req = Message.profileRequest("alice", "bob");
+        Message parsedReq = Message.fromJson(req.toJson());
+        assertEquals(MessageType.PROFILE_REQUEST, parsedReq.getType());
+        assertEquals("bob", parsedReq.getTarget());
+
+        Message resp = Message.profileResponse(profile);
+        Message parsedResp = Message.fromJson(resp.toJson());
+        assertEquals(MessageType.PROFILE_RESPONSE, parsedResp.getType());
+        assertEquals("alice", parsedResp.getProfile().getUsername());
+    }
+
+    @Test
     @DisplayName("Deserialización de JSON con campos adicionales desconocidos (Forward Compatibility)")
     void testUnknownProperties() throws IOException {
         String jsonWithExtra = "{\"type\":\"CHAT\",\"sender\":\"dani\",\"content\":\"test\",\"extraField\":12345}";
@@ -96,16 +165,16 @@ class MessageTest {
     @Test
     @DisplayName("Verificación de equals, hashCode y toString en Message")
     void testEqualsAndHashCode() {
-        Message m1 = Message.chat("alice", "hola");
+        Message m1 = Message.chat("#general", "alice", "hola");
         m1.setTimestamp(1000L);
-        Message m2 = Message.chat("alice", "hola");
+        Message m2 = Message.chat("#general", "alice", "hola");
         m2.setTimestamp(1000L);
 
         assertEquals(m1, m2);
         assertEquals(m1.hashCode(), m2.hashCode());
         assertTrue(m1.toString().contains("alice"));
 
-        Message m3 = Message.chat("bob", "hola");
+        Message m3 = Message.chat("#general", "bob", "hola");
         m3.setTimestamp(1000L);
         assertNotEquals(m1, m3);
     }
@@ -120,6 +189,20 @@ class MessageTest {
         msg.setUsers(null);
         assertNotNull(msg.getUsers());
         assertTrue(msg.getUsers().isEmpty());
+    }
+
+    @Test
+    @DisplayName("Mensaje del sistema con y sin canal")
+    void testSystemMessageFactory() {
+        Message sysGlobal = Message.system("Aviso global");
+        assertEquals(MessageType.SYSTEM, sysGlobal.getType());
+        assertEquals("Aviso global", sysGlobal.getContent());
+        assertNull(sysGlobal.getChannel());
+
+        Message sysChannel = Message.system("#ia-computacion", "Aviso de canal");
+        assertEquals(MessageType.SYSTEM, sysChannel.getType());
+        assertEquals("#ia-computacion", sysChannel.getChannel());
+        assertEquals("Aviso de canal", sysChannel.getContent());
     }
 
     @ParameterizedTest

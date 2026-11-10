@@ -2,6 +2,7 @@ package com.danicaju.chat.client;
 
 import com.danicaju.chat.model.Message;
 import com.danicaju.chat.model.MessageType;
+import com.danicaju.chat.model.UserProfile;
 
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -12,12 +13,12 @@ import java.io.PrintWriter;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * Conexión cliente reutilizable y orientada a eventos para RealTimeChat.
- * Gestiona el ciclo de vida del socket TCP, el protocolo JSON y el hilo de recepción.
+ * Gestiona el ciclo de vida del socket TCP, el protocolo JSON y el hilo de recepción en segundo plano.
+ * Soporta canales, indicadores de escritura (typing), personalización de perfiles y solicitudes de historial.
  */
 public class ChatClientConnection {
 
@@ -27,6 +28,7 @@ public class ChatClientConnection {
     private Thread listenerThread;
     private ChatEventListener eventListener;
     private String username;
+    private String currentChannel = Message.DEFAULT_CHANNEL;
     private final AtomicBoolean connected = new AtomicBoolean(false);
 
     /**
@@ -70,6 +72,7 @@ public class ChatClientConnection {
             if (initialMsg.getType() == MessageType.SYSTEM && initialMsg.getContent() != null) {
                 if (initialMsg.getContent().startsWith("OK:")) {
                     this.username = requestedUsername != null ? requestedUsername.trim() : "";
+                    this.currentChannel = Message.DEFAULT_CHANNEL;
                     this.connected.set(true);
                     socket.setSoTimeout(0); // Quitar timeout para escucha continua indefinida
 
@@ -120,15 +123,7 @@ public class ChatClientConnection {
 
                     try {
                         Message msg = Message.fromJson(line);
-                        if (msg.getType() == MessageType.USER_LIST) {
-                            if (eventListener != null) {
-                                eventListener.onUserListUpdated(msg.getUsers());
-                            }
-                        } else {
-                            if (eventListener != null) {
-                                eventListener.onMessageReceived(msg);
-                            }
-                        }
+                        handleIncomingMessage(msg);
                     } catch (Exception parseEx) {
                         System.err.println("Advertencia: mensaje recibido no parseable: " + line);
                     }
@@ -149,14 +144,52 @@ public class ChatClientConnection {
         listenerThread.start();
     }
 
+    private void handleIncomingMessage(Message msg) {
+        if (eventListener == null || msg == null || msg.getType() == null) {
+            return;
+        }
+
+        switch (msg.getType()) {
+            case USER_LIST -> {
+                eventListener.onUserListUpdated(msg.getUsers());
+            }
+            case CHANNEL_LIST -> {
+                eventListener.onChannelListUpdated(msg.getChannels());
+            }
+            case HISTORY -> {
+                eventListener.onHistoryReceived(msg.getChannel(), msg.getHistory());
+            }
+            case TYPING_START -> {
+                eventListener.onTypingUpdated(msg.getSender(), msg.getChannel(), true);
+            }
+            case TYPING_STOP -> {
+                eventListener.onTypingUpdated(msg.getSender(), msg.getChannel(), false);
+            }
+            case PROFILE_RESPONSE -> {
+                eventListener.onProfileReceived(msg.getProfile());
+            }
+            default -> {
+                eventListener.onMessageReceived(msg);
+            }
+        }
+    }
+
     /**
-     * Envía un mensaje público a la sala.
+     * Envía un mensaje público al canal activo.
      */
     public synchronized void sendChatMessage(String content) {
+        sendChatMessage(this.currentChannel, content);
+    }
+
+    /**
+     * Envía un mensaje público a un canal específico.
+     */
+    public synchronized void sendChatMessage(String channel, String content) {
         if (!isConnected() || writer == null || content == null || content.trim().isEmpty()) {
             return;
         }
-        Message msg = Message.chat(this.username, content.trim());
+        String targetChannel = channel != null && !channel.trim().isEmpty() ? channel.trim() : this.currentChannel;
+        Message msg = Message.chat(targetChannel, this.username, content.trim());
         writer.println(msg.toJson());
     }
 
@@ -172,6 +205,59 @@ public class ChatClientConnection {
     }
 
     /**
+     * Solicita cambio de canal.
+     */
+    public synchronized void switchChannel(String newChannel) {
+        if (!isConnected() || writer == null || newChannel == null || newChannel.trim().isEmpty()) {
+            return;
+        }
+        String target = newChannel.trim();
+        if (!target.startsWith("#")) {
+            target = "#" + target;
+        }
+        this.currentChannel = target;
+        Message msg = Message.joinChannel(this.username, target);
+        writer.println(msg.toJson());
+        if (eventListener != null) {
+            eventListener.onChannelChanged(target);
+        }
+    }
+
+    /**
+     * Envía una notificación de inicio o parada de escritura (typing indicator).
+     */
+    public synchronized void sendTyping(boolean isTyping) {
+        if (!isConnected() || writer == null) {
+            return;
+        }
+        Message msg = isTyping ? Message.typingStart(this.username, this.currentChannel)
+                : Message.typingStop(this.username, this.currentChannel);
+        writer.println(msg.toJson());
+    }
+
+    /**
+     * Actualiza el perfil del usuario.
+     */
+    public synchronized void updateProfile(UserProfile profile) {
+        if (!isConnected() || writer == null || profile == null) {
+            return;
+        }
+        Message msg = Message.profileUpdate(this.username, profile);
+        writer.println(msg.toJson());
+    }
+
+    /**
+     * Solicita el perfil de un usuario para inspección.
+     */
+    public synchronized void requestProfile(String targetUsername) {
+        if (!isConnected() || writer == null || targetUsername == null) {
+            return;
+        }
+        Message msg = Message.profileRequest(this.username, targetUsername.trim());
+        writer.println(msg.toJson());
+    }
+
+    /**
      * Solicita al servidor refrescar la lista de usuarios.
      */
     public synchronized void requestUserList() {
@@ -180,6 +266,18 @@ public class ChatClientConnection {
         }
         Message msg = new Message();
         msg.setType(MessageType.USER_LIST);
+        writer.println(msg.toJson());
+    }
+
+    /**
+     * Solicita la lista de canales disponibles.
+     */
+    public synchronized void requestChannelList() {
+        if (!isConnected() || writer == null) {
+            return;
+        }
+        Message msg = new Message();
+        msg.setType(MessageType.CHANNEL_LIST);
         writer.println(msg.toJson());
     }
 
@@ -233,5 +331,9 @@ public class ChatClientConnection {
 
     public String getUsername() {
         return username;
+    }
+
+    public String getCurrentChannel() {
+        return currentChannel;
     }
 }

@@ -1,6 +1,7 @@
 package com.danicaju.chat.server;
 
 import com.danicaju.chat.model.Message;
+import com.danicaju.chat.model.UserProfile;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -12,14 +13,11 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@DisplayName("Pruebas Unitarias de ChatRoom y Control de Concurrencia de Usuarios")
+@DisplayName("Pruebas Unitarias de ChatRoom, Canales, Historial y Perfiles")
 class ChatRoomTest {
 
     private ChatRoom chatRoom;
 
-    /**
-     * Stub de ClientHandler para simular conexiones de red en los tests unitarios.
-     */
     static class FakeClientHandler extends ClientHandler {
         final List<String> receivedMessages = new ArrayList<>();
         boolean wasClosed = false;
@@ -69,6 +67,7 @@ class ChatRoomTest {
         assertTrue(chatRoom.isUsernameTaken("alice"));
         assertEquals(1, chatRoom.getUserCount());
         assertEquals(List.of("alice"), chatRoom.getActiveUsers());
+        assertEquals(ChatRoom.DEFAULT_CHANNEL, chatRoom.getUserChannel("alice"));
     }
 
     @Test
@@ -104,7 +103,6 @@ class ChatRoomTest {
         assertFalse(chatRoom.isUsernameTaken("alice"));
         assertEquals(0, chatRoom.getUserCount());
 
-        // Desregistrar nuevamente retorna false
         assertFalse(chatRoom.unregisterClient("alice", handler));
     }
 
@@ -140,7 +138,6 @@ class ChatRoomTest {
         assertTrue(bob.receivedMessages.get(0).contains("Hola secreto"));
         assertEquals(0, alice.receivedMessages.size());
 
-        // Envío a usuario inexistente
         boolean failed = chatRoom.sendPrivate("carlos_fantasma", msg);
         assertFalse(failed);
     }
@@ -157,20 +154,96 @@ class ChatRoomTest {
         chatRoom.registerClient("charlie", charlie);
 
         Message msg1 = Message.chat("alice", "Mensaje público");
-        // Broadcast excluyendo a alice
         chatRoom.broadcast(msg1, alice);
 
         assertEquals(0, alice.receivedMessages.size());
         assertEquals(1, bob.receivedMessages.size());
         assertEquals(1, charlie.receivedMessages.size());
 
-        // Broadcast a todos sin excepción
         Message msg2 = Message.system("Aviso general");
         chatRoom.broadcast(msg2, null);
 
         assertEquals(1, alice.receivedMessages.size());
         assertEquals(2, bob.receivedMessages.size());
         assertEquals(2, charlie.receivedMessages.size());
+    }
+
+    @Test
+    @DisplayName("Gestión de múltiples canales y cambio de canal de usuarios")
+    void testChannelsAndSwitching() {
+        FakeClientHandler alice = new FakeClientHandler(chatRoom);
+        FakeClientHandler bob = new FakeClientHandler(chatRoom);
+
+        chatRoom.registerClient("alice", alice);
+        chatRoom.registerClient("bob", bob);
+
+        // Por defecto ambos están en #general
+        assertEquals("#general", chatRoom.getUserChannel("alice"));
+        assertEquals(List.of("alice", "bob"), chatRoom.getActiveUsersInChannel("#general"));
+
+        // Bob cambia a #ia-computacion
+        String switched = chatRoom.switchUserChannel("bob", "#ia-computacion");
+        assertEquals("#ia-computacion", switched);
+        assertEquals("#ia-computacion", chatRoom.getUserChannel("bob"));
+        assertEquals(List.of("alice"), chatRoom.getActiveUsersInChannel("#general"));
+        assertEquals(List.of("bob"), chatRoom.getActiveUsersInChannel("#ia-computacion"));
+
+        // Mensaje enviado a #ia-computacion solo llega a Bob
+        Message iaMsg = Message.chat("#ia-computacion", "bob", "Hola IA");
+        chatRoom.broadcast(iaMsg, null);
+
+        assertTrue(bob.receivedMessages.stream().anyMatch(m -> m.contains("Hola IA")));
+        assertFalse(alice.receivedMessages.stream().anyMatch(m -> m.contains("Hola IA")));
+    }
+
+    @Test
+    @DisplayName("Búfer de reproducción (historial) acotado a MAX_HISTORY_PER_CHANNEL")
+    void testChannelHistoryBuffer() {
+        String channel = "#general";
+        for (int i = 0; i < 60; i++) {
+            chatRoom.recordChannelMessage(channel, Message.chat(channel, "user", "Mensaje " + i));
+        }
+
+        List<Message> history = chatRoom.getChannelHistory(channel);
+        assertEquals(ChatRoom.MAX_HISTORY_PER_CHANNEL, history.size());
+        assertEquals("Mensaje 10", history.get(0).getContent());
+        assertEquals("Mensaje 59", history.get(history.size() - 1).getContent());
+    }
+
+    @Test
+    @DisplayName("Almacenamiento y actualización de perfiles de usuario")
+    void testUserProfiles() {
+        FakeClientHandler alice = new FakeClientHandler(chatRoom);
+        chatRoom.registerClient("alice", alice);
+
+        UserProfile defaultProf = chatRoom.getUserProfile("alice");
+        assertNotNull(defaultProf);
+        assertEquals("alice", defaultProf.getUsername());
+
+        UserProfile updatedProf = new UserProfile("alice", "Especialista en IA y Redes", "synthwave", "gradient-sunset");
+        chatRoom.updateUserProfile("alice", updatedProf);
+
+        UserProfile retrieved = chatRoom.getUserProfile("alice");
+        assertEquals("Especialista en IA y Redes", retrieved.getBio());
+        assertEquals("synthwave", retrieved.getAvatar());
+        assertEquals("gradient-sunset", retrieved.getBanner());
+    }
+
+    @Test
+    @DisplayName("Difusión de eventos de escritura (typing indicator)")
+    void testBroadcastTyping() {
+        FakeClientHandler alice = new FakeClientHandler(chatRoom);
+        FakeClientHandler bob = new FakeClientHandler(chatRoom);
+
+        chatRoom.registerClient("alice", alice);
+        chatRoom.registerClient("bob", bob);
+
+        chatRoom.broadcastTyping("#general", "alice", true, alice);
+
+        assertEquals(0, alice.receivedMessages.size());
+        assertEquals(1, bob.receivedMessages.size());
+        assertTrue(bob.receivedMessages.get(0).contains("\"type\":\"TYPING_START\""));
+        assertTrue(bob.receivedMessages.get(0).contains("\"sender\":\"alice\""));
     }
 
     @Test
@@ -200,7 +273,6 @@ class ChatRoomTest {
         chatRoom.registerClient("Alice", alice);
         chatRoom.registerClient("Bob", bob);
 
-        // Envío a 'alice' en minúsculas aunque se registró como 'Alice'
         Message msg = Message.privateMsg("Bob", "alice", "Hola confidencial");
         boolean delivered = chatRoom.sendPrivate("alice", msg);
 
@@ -247,13 +319,11 @@ class ChatRoomTest {
             });
         }
 
-        // Liberar todos los hilos simultáneamente
         startLatch.countDown();
         assertTrue(endLatch.await(5, java.util.concurrent.TimeUnit.SECONDS));
         pool.shutdown();
 
-        // Exactamente 1 debe haber tenido éxito
-        assertEquals(1, successCount.get(), "Exactamente 1 hilo debió registrar con éxito el apodo compartido");
+        assertEquals(1, successCount.get());
         assertEquals(1, chatRoom.getUserCount());
     }
 
@@ -281,5 +351,42 @@ class ChatRoomTest {
         assertFalse(chatRoom.sendPrivate("alice", null));
         assertFalse(chatRoom.isUsernameTaken(null));
         assertFalse(chatRoom.unregisterClient(null, null));
+    }
+
+    @Test
+    @DisplayName("Validación y saneamiento de nombres de canal")
+    void testChannelNameValidation() {
+        assertTrue(ChatRoom.isValidChannelName("#general"));
+        assertTrue(ChatRoom.isValidChannelName("ia-computacion"));
+        assertTrue(ChatRoom.isValidChannelName("#gaming_room"));
+        assertTrue(ChatRoom.isValidChannelName("c1"));
+
+        assertFalse(ChatRoom.isValidChannelName("#"));
+        assertFalse(ChatRoom.isValidChannelName(""));
+        assertFalse(ChatRoom.isValidChannelName("   "));
+        assertFalse(ChatRoom.isValidChannelName(null));
+        assertFalse(ChatRoom.isValidChannelName("canal con espacios"));
+        assertFalse(ChatRoom.isValidChannelName("#canal@invalido!"));
+        assertFalse(ChatRoom.isValidChannelName("#un_nombre_de_canal_que_supera_los_treinta_caracteres_permitidos"));
+
+        assertEquals("#general", ChatRoom.normalizeChannel(null));
+        assertEquals("#general", ChatRoom.normalizeChannel("   "));
+        assertEquals("#general", ChatRoom.normalizeChannel("#"));
+        assertEquals("#general", ChatRoom.normalizeChannel("invalid space"));
+        assertEquals("#gaming", ChatRoom.normalizeChannel("gaming"));
+        assertEquals("#gaming", ChatRoom.normalizeChannel("#gaming"));
+    }
+
+    @Test
+    @DisplayName("Rechazo de registro de canales con nombres inválidos")
+    void testInvalidChannelRegistration() {
+        int initialCount = chatRoom.getAvailableChannels().size();
+        chatRoom.registerChannel("#");
+        chatRoom.registerChannel("invalid with spaces");
+        chatRoom.registerChannel(null);
+        assertEquals(initialCount, chatRoom.getAvailableChannels().size());
+
+        chatRoom.registerChannel("#nuevo-canal");
+        assertTrue(chatRoom.getAvailableChannels().contains("#nuevo-canal"));
     }
 }

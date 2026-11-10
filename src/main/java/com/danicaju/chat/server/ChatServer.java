@@ -9,9 +9,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Servidor multihilo de RealTimeChat.
- * Utiliza un Thread Pool (ExecutorService) para administrar las conexiones concurrentes
- * y un Shutdown Hook para la liberación adecuada de sockets y recursos del sistema.
+ * Servidor multihilo de alta concurrencia para RealTimeChat NextGen.
+ * Utiliza Virtual Threads (Project Loom en Java 21+) con fallback transparente
+ * a Cached Thread Pool para admitir miles de conexiones simultáneas con bajo consumo de memoria.
  */
 public class ChatServer {
 
@@ -22,12 +22,32 @@ public class ChatServer {
     private final ExecutorService threadPool;
     private ServerSocket serverSocket;
     private Thread shutdownHookThread;
+    private final java.util.concurrent.CountDownLatch startLatch = new java.util.concurrent.CountDownLatch(1);
     private volatile boolean running = false;
 
     public ChatServer(int port) {
         this.port = port;
         this.chatRoom = new ChatRoom();
-        this.threadPool = Executors.newCachedThreadPool();
+        this.threadPool = createOptimalThreadPool();
+    }
+
+    /**
+     * Espera de forma determinista hasta que el ServerSocket esté vinculado y escuchando.
+     */
+    public boolean awaitStarted(long timeout, TimeUnit unit) throws InterruptedException {
+        return startLatch.await(timeout, unit);
+    }
+
+    /**
+     * Crea un ExecutorService óptimo utilizando Virtual Threads de Java 21+
+     * o CachedThreadPool en entornos donde los Virtual Threads no estén disponibles.
+     */
+    public static ExecutorService createOptimalThreadPool() {
+        try {
+            return Executors.newVirtualThreadPerTaskExecutor();
+        } catch (NoSuchMethodError | Exception e) {
+            return Executors.newCachedThreadPool();
+        }
     }
 
     /**
@@ -42,10 +62,13 @@ public class ChatServer {
             this.serverSocket = new ServerSocket(port);
             this.running = true;
             boundPort = serverSocket.getLocalPort();
+            startLatch.countDown();
         }
 
         System.out.println("==================================================");
-        System.out.println("  RealTimeChat Server - Iniciado en el puerto " + boundPort);
+        System.out.println("  RealTimeChat NextGen Server - Puerto " + boundPort);
+        System.out.println("  Concurrencia: Virtual Threads (Project Loom) activados");
+        System.out.println("  Rate Limiting: Token Bucket activado");
         System.out.println("==================================================");
 
         // Registro de gancho de apagado seguro (Shutdown Hook)
@@ -53,14 +76,14 @@ public class ChatServer {
         try {
             Runtime.getRuntime().addShutdownHook(this.shutdownHookThread);
         } catch (IllegalStateException ignored) {
-            // La JVM ya se encuentra en fase de apagado
+            // JVM en fase de apagado
         }
 
         try {
             while (running) {
                 Socket clientSocket = serverSocket.accept();
                 System.out.println("📥 Conexión entrante desde: " + clientSocket.getRemoteSocketAddress());
-                ClientHandler handler = new ClientHandler(clientSocket, chatRoom);
+                ClientHandler handler = new ClientHandler(clientSocket, chatRoom, threadPool);
                 threadPool.submit(handler);
             }
         } catch (SocketException e) {

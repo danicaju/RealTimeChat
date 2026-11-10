@@ -13,8 +13,8 @@
     <description>Servidor y clientes duales (CLI y GUI con FlatLaf) de chat multicliente en tiempo real sobre TCP/IP con protocolo JSON.</description>
 
     <properties>
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <flatlaf.version>3.5.4</flatlaf.version>
         <jackson.version>2.17.0</jackson.version>
@@ -59,7 +59,7 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.13.0</version>
                 <configuration>
-                    <release>17</release>
+                    <release>21</release>
                     <encoding>UTF-8</encoding>
                 </configuration>
             </plugin>

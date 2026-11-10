@@ -1,6 +1,7 @@
 package com.danicaju.chat.client;
 
 import com.danicaju.chat.model.Message;
+import com.danicaju.chat.model.UserProfile;
 
 import java.time.Instant;
 import java.time.ZoneId;
@@ -9,8 +10,9 @@ import java.util.List;
 import java.util.Scanner;
 
 /**
- * Cliente de consola ágil y robusto para RealTimeChat.
- * Soporta comandos de terminal (/w, /list, /help, /quit).
+ * Cliente de consola ágil y robusto para RealTimeChat NextGen.
+ * Soporta canales (/join, /channels), perfiles (/bio, /avatar, /profile),
+ * asistente AI (@bot, /ai), mensajería privada (/w) e historial reproducido.
  */
 public class ChatConsoleClient implements ChatEventListener {
 
@@ -20,6 +22,7 @@ public class ChatConsoleClient implements ChatEventListener {
     private final ChatClientConnection connection;
     private final Scanner scanner;
     private volatile boolean running = true;
+    private UserProfile myProfile;
 
     public ChatConsoleClient() {
         this.connection = new ChatClientConnection();
@@ -32,7 +35,7 @@ public class ChatConsoleClient implements ChatEventListener {
 
     public void run(String[] args) {
         System.out.println("==================================================");
-        System.out.println("         RealTimeChat - Consola Interactiva       ");
+        System.out.println("     RealTimeChat NextGen - Consola Interactiva   ");
         System.out.println("==================================================");
 
         String host = args != null && args.length > 0 && !args[0].trim().isEmpty() ? args[0].trim() : "";
@@ -77,6 +80,8 @@ public class ChatConsoleClient implements ChatEventListener {
             return;
         }
 
+        myProfile = new UserProfile(username);
+
         Thread shutdownHook = new Thread(connection::disconnect, "console-client-shutdown");
         try {
             Runtime.getRuntime().addShutdownHook(shutdownHook);
@@ -104,7 +109,19 @@ public class ChatConsoleClient implements ChatEventListener {
                 printHelp();
             } else if (input.equalsIgnoreCase("/list") || input.equalsIgnoreCase("/usuarios")) {
                 connection.requestUserList();
-            } else if (input.startsWith("/w ") || input.startsWith("/msg ")) {
+            } else if (input.equalsIgnoreCase("/channels") || input.equalsIgnoreCase("/canales")) {
+                connection.requestChannelList();
+            } else if (input.startsWith("/join") || input.startsWith("/canal")) {
+                handleJoinCommand(input);
+            } else if (input.startsWith("/bio")) {
+                handleBioCommand(input);
+            } else if (input.startsWith("/avatar")) {
+                handleAvatarCommand(input);
+            } else if (input.startsWith("/banner")) {
+                handleBannerCommand(input);
+            } else if (input.startsWith("/profile") || input.startsWith("/perfil")) {
+                handleProfileCommand(input);
+            } else if (input.startsWith("/w") || input.startsWith("/msg")) {
                 handlePrivateCommand(input);
             } else {
                 connection.sendChatMessage(input);
@@ -115,25 +132,83 @@ public class ChatConsoleClient implements ChatEventListener {
         System.exit(0);
     }
 
+    private void handleJoinCommand(String input) {
+        String[] parts = input.trim().split("\\s+", 2);
+        if (parts.length < 2 || parts[1].trim().isEmpty()) {
+            System.out.println("Uso: /join <#canal>");
+            return;
+        }
+        connection.switchChannel(parts[1].trim());
+    }
+
+    private void handleBioCommand(String input) {
+        String[] parts = input.trim().split("\\s+", 2);
+        if (parts.length < 2 || parts[1].trim().isEmpty()) {
+            System.out.println("Uso: /bio <texto de tu biografía>");
+            return;
+        }
+        String bio = parts[1].trim();
+        myProfile.setBio(bio);
+        connection.updateProfile(myProfile);
+        System.out.println("[PERFIL] Biografía actualizada a: \"" + myProfile.getBio() + "\"");
+    }
+
+    private void handleAvatarCommand(String input) {
+        String[] parts = input.trim().split("\\s+", 2);
+        if (parts.length < 2 || parts[1].trim().isEmpty()) {
+            System.out.println("Uso: /avatar <cyber-neon | synthwave | cosmic | emerald | sunset | bot-matrix | golden | retro-pixel>");
+            return;
+        }
+        String avatar = parts[1].trim();
+        myProfile.setAvatar(avatar);
+        connection.updateProfile(myProfile);
+        System.out.println("[PERFIL] Avatar establecido a: " + avatar);
+    }
+
+    private void handleBannerCommand(String input) {
+        String[] parts = input.trim().split("\\s+", 2);
+        if (parts.length < 2 || parts[1].trim().isEmpty()) {
+            System.out.println("Uso: /banner <#color_hex | gradient-cyber | gradient-sunset | gradient-cosmic>");
+            return;
+        }
+        String banner = parts[1].trim();
+        myProfile.setBanner(banner);
+        connection.updateProfile(myProfile);
+        System.out.println("[PERFIL] Banner establecido a: " + banner);
+    }
+
+    private void handleProfileCommand(String input) {
+        String[] parts = input.trim().split("\\s+", 2);
+        String target = parts.length > 1 ? parts[1].trim() : connection.getUsername();
+        connection.requestProfile(target);
+    }
+
     private void handlePrivateCommand(String input) {
-        String[] parts = input.split("\\s+", 3);
-        if (parts.length < 3) {
+        String[] parts = input.trim().split("\\s+", 3);
+        if (parts.length < 3 || parts[1].trim().isEmpty() || parts[2].trim().isEmpty()) {
             System.out.println("Uso: /w <usuario> <mensaje>");
             return;
         }
-        String target = parts[1];
-        String content = parts[2];
+        String target = parts[1].trim();
+        String content = parts[2].trim();
         connection.sendPrivateMessage(target, content);
     }
 
     private void printHelp() {
         System.out.println("--------------------------------------------------");
-        System.out.println("Comandos disponibles:");
+        System.out.println("Comandos disponibles en RealTimeChat NextGen:");
+        System.out.println("  /join <#canal>          : Cambiar de canal de chat");
+        System.out.println("  /channels              : Ver lista de canales disponibles");
         System.out.println("  /w <usuario> <mensaje>  : Enviar mensaje privado");
-        System.out.println("  /list                  : Listar usuarios conectados");
+        System.out.println("  /bio <texto>           : Actualizar tu biografía");
+        System.out.println("  /avatar <preset>       : Cambiar tu avatar (ej: cyber-neon, cosmic)");
+        System.out.println("  /banner <preset/#hex>  : Cambiar tu banner (ej: gradient-cyber, #5865F2)");
+        System.out.println("  /profile <usuario>     : Ver el perfil de un usuario");
+        System.out.println("  @bot <pregunta>        : Consultar al asistente inteligente AI");
+        System.out.println("  /list                  : Listar usuarios en tu canal actual");
         System.out.println("  /help                  : Ver esta guía de ayuda");
         System.out.println("  /quit o /salir         : Salir del chat");
-        System.out.println("  <texto>                : Mensaje público a la sala");
+        System.out.println("  <texto>                : Mensaje público al canal (" + connection.getCurrentChannel() + ")");
         System.out.println("--------------------------------------------------");
     }
 
@@ -143,7 +218,7 @@ public class ChatConsoleClient implements ChatEventListener {
 
     @Override
     public void onConnected(String username) {
-        System.out.println("[OK] Conectado exitosamente como " + username + "!");
+        System.out.println("[OK] Conectado exitosamente como @" + username + "!");
     }
 
     @Override
@@ -153,29 +228,33 @@ public class ChatConsoleClient implements ChatEventListener {
         }
 
         String time = formatTimestamp(message.getTimestamp());
+        String ch = message.getChannel() != null ? " (" + message.getChannel() + ")" : "";
+
         switch (message.getType()) {
             case CHAT -> {
                 String sender = message.getSender();
                 if (connection.getUsername() != null && connection.getUsername().equalsIgnoreCase(sender)) {
-                    System.out.println(time + " [Tú]: " + message.getContent());
+                    System.out.println(time + ch + " [Tú]: " + message.getContent());
+                } else if ("RealTimeBot".equalsIgnoreCase(sender)) {
+                    System.out.println(time + ch + " 🤖 [AI RealTimeBot]: " + message.getContent());
                 } else {
-                    System.out.println(time + " " + sender + ": " + message.getContent());
+                    System.out.println(time + ch + " @" + sender + ": " + message.getContent());
                 }
             }
             case PRIVATE -> {
                 String sender = message.getSender();
                 String target = message.getTarget();
                 if (connection.getUsername() != null && connection.getUsername().equalsIgnoreCase(sender)) {
-                    System.out.println(time + " [PRIVADO a " + target + "]: " + message.getContent());
+                    System.out.println(time + " [PRIVADO a @" + target + "]: " + message.getContent());
                 } else {
-                    System.out.println(time + " [PRIVADO de " + sender + "]: " + message.getContent());
+                    System.out.println(time + " [PRIVADO de @" + sender + "]: " + message.getContent());
                 }
             }
             case SYSTEM -> {
                 System.out.println(time + " [SISTEMA] " + message.getContent());
             }
             case LEAVE -> {
-                System.out.println(time + " [SALIDA] " + message.getSender() + " ha salido.");
+                System.out.println(time + " [SALIDA] @" + message.getSender() + " ha salido.");
             }
             default -> {
             }
@@ -185,7 +264,48 @@ public class ChatConsoleClient implements ChatEventListener {
     @Override
     public void onUserListUpdated(List<String> users) {
         String time = formatTimestamp(System.currentTimeMillis());
-        System.out.println(time + " [USUARIOS] Usuarios en línea (" + users.size() + "): " + String.join(", ", users));
+        System.out.println(time + " [USUARIOS " + connection.getCurrentChannel() + "] (" + users.size() + "): " + String.join(", ", users));
+    }
+
+    @Override
+    public void onChannelListUpdated(List<String> channels) {
+        System.out.println("[CANALES DISPONIBLES]: " + String.join(", ", channels));
+    }
+
+    @Override
+    public void onChannelChanged(String newChannel) {
+        System.out.println("🔄 [CANAL ACTIVO]: Ahora te encuentras en " + newChannel);
+    }
+
+    @Override
+    public void onTypingUpdated(String sender, String channel, boolean isTyping) {
+        if (isTyping && !sender.equalsIgnoreCase(connection.getUsername())) {
+            System.out.println("✍️  @" + sender + " está escribiendo en " + channel + "...");
+        }
+    }
+
+    @Override
+    public void onHistoryReceived(String channel, List<Message> history) {
+        if (history != null && !history.isEmpty()) {
+            System.out.println("--- Historial reciente de " + channel + " (" + history.size() + " mensajes) ---");
+            for (Message m : history) {
+                String time = formatTimestamp(m.getTimestamp());
+                System.out.println("  " + time + " @" + m.getSender() + ": " + m.getContent());
+            }
+            System.out.println("-----------------------------------------------------------------");
+        }
+    }
+
+    @Override
+    public void onProfileReceived(UserProfile profile) {
+        if (profile != null) {
+            System.out.println("==================================================");
+            System.out.println("  Perfil de @" + profile.getUsername());
+            System.out.println("  Avatar : " + profile.getAvatar());
+            System.out.println("  Banner : " + profile.getBanner());
+            System.out.println("  Bio    : " + profile.getBio());
+            System.out.println("==================================================");
+        }
     }
 
     @Override
