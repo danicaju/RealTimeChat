@@ -236,7 +236,7 @@ public class ChatConsoleClient implements ChatEventListener {
                 if (connection.getUsername() != null && connection.getUsername().equalsIgnoreCase(sender)) {
                     System.out.println(time + ch + " [Tú]: " + message.getContent());
                 } else if ("RealTimeBot".equalsIgnoreCase(sender)) {
-                    System.out.println(time + ch + " 🤖 [AI RealTimeBot]: " + message.getContent());
+                    System.out.println(time + ch + " [AI RealTimeBot]: " + message.getContent());
                 } else {
                     System.out.println(time + ch + " @" + sender + ": " + message.getContent());
                 }
@@ -274,13 +274,13 @@ public class ChatConsoleClient implements ChatEventListener {
 
     @Override
     public void onChannelChanged(String newChannel) {
-        System.out.println("🔄 [CANAL ACTIVO]: Ahora te encuentras en " + newChannel);
+        System.out.println("[CANAL ACTIVO]: Ahora te encuentras en " + newChannel);
     }
 
     @Override
     public void onTypingUpdated(String sender, String channel, boolean isTyping) {
         if (isTyping && !sender.equalsIgnoreCase(connection.getUsername())) {
-            System.out.println("✍️  @" + sender + " está escribiendo en " + channel + "...");
+            System.out.println("... @" + sender + " está escribiendo en " + channel + "...");
         }
     }
 

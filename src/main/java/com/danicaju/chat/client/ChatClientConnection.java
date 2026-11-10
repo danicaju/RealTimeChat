@@ -58,43 +58,41 @@ public class ChatClientConnection {
             Message joinMessage = Message.join(requestedUsername != null ? requestedUsername.trim() : "");
             writer.println(joinMessage.toJson());
 
-            // Esperar respuesta inicial de validación
-            String responseLine = reader.readLine();
-            if (responseLine == null) {
-                if (eventListener != null) {
-                    eventListener.onError("El servidor cerró la conexión inesperadamente.");
+            // Esperar respuesta inicial de validación (procesar hasta SYSTEM con OK: o ERROR:)
+            String responseLine;
+            while ((responseLine = reader.readLine()) != null) {
+                responseLine = responseLine.trim();
+                if (responseLine.isEmpty()) {
+                    continue;
                 }
-                close();
-                return false;
+
+                Message initialMsg = Message.fromJson(responseLine);
+                if (initialMsg.getType() == MessageType.SYSTEM && initialMsg.getContent() != null) {
+                    if (initialMsg.getContent().startsWith("OK:")) {
+                        this.username = requestedUsername != null ? requestedUsername.trim() : "";
+                        this.currentChannel = Message.DEFAULT_CHANNEL;
+                        this.connected.set(true);
+                        socket.setSoTimeout(0); // Quitar timeout para escucha continua indefinida
+
+                        startListenerThread();
+
+                        if (eventListener != null) {
+                            eventListener.onConnected(this.username);
+                            eventListener.onMessageReceived(initialMsg);
+                        }
+                        return true;
+                    } else if (initialMsg.getContent().startsWith("ERROR:")) {
+                        if (eventListener != null) {
+                            eventListener.onError(initialMsg.getContent());
+                        }
+                        close();
+                        return false;
+                    }
+                }
             }
 
-            Message initialMsg = Message.fromJson(responseLine);
-            if (initialMsg.getType() == MessageType.SYSTEM && initialMsg.getContent() != null) {
-                if (initialMsg.getContent().startsWith("OK:")) {
-                    this.username = requestedUsername != null ? requestedUsername.trim() : "";
-                    this.currentChannel = Message.DEFAULT_CHANNEL;
-                    this.connected.set(true);
-                    socket.setSoTimeout(0); // Quitar timeout para escucha continua indefinida
-
-                    startListenerThread();
-
-                    if (eventListener != null) {
-                        eventListener.onConnected(this.username);
-                        eventListener.onMessageReceived(initialMsg);
-                    }
-                    return true;
-                } else if (initialMsg.getContent().startsWith("ERROR:")) {
-                    if (eventListener != null) {
-                        eventListener.onError(initialMsg.getContent());
-                    }
-                    close();
-                    return false;
-                }
-            }
-
-            // Si llegamos aquí sin un OK claro, reportamos error
             if (eventListener != null) {
-                eventListener.onError("Respuesta no válida del servidor durante el handshake.");
+                eventListener.onError("El servidor cerró la conexión inesperadamente.");
             }
             close();
             return false;

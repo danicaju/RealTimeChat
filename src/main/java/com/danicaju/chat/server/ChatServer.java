@@ -82,19 +82,19 @@ public class ChatServer {
         try {
             while (running) {
                 Socket clientSocket = serverSocket.accept();
-                System.out.println("📥 Conexión entrante desde: " + clientSocket.getRemoteSocketAddress());
+                System.out.println("[+] Conexión entrante desde: " + clientSocket.getRemoteSocketAddress());
                 ClientHandler handler = new ClientHandler(clientSocket, chatRoom, threadPool);
                 threadPool.submit(handler);
             }
         } catch (SocketException e) {
             if (!running) {
-                System.out.println("🛑 Servidor detenido de manera controlada.");
+                System.out.println("[STOP] Servidor detenido de manera controlada.");
             } else {
-                System.err.println("❌ Error en el socket del servidor: " + e.getMessage());
+                System.err.println("[ERROR] Error en el socket del servidor: " + e.getMessage());
             }
         } catch (IOException e) {
             if (running) {
-                System.err.println("❌ Error I/O en el servidor: " + e.getMessage());
+                System.err.println("[ERROR] Error I/O en el servidor: " + e.getMessage());
             }
         } finally {
             stop();
@@ -109,7 +109,7 @@ public class ChatServer {
             return;
         }
         running = false;
-        System.out.println("🔄 Cerrando servidor RealTimeChat...");
+        System.out.println("[INFO] Cerrando servidor RealTimeChat...");
 
         // Desregistrar gancho de apagado para evitar fugas
         if (shutdownHookThread != null) {
@@ -126,7 +126,7 @@ public class ChatServer {
                 serverSocket.close();
             }
         } catch (IOException e) {
-            System.err.println("⚠️ Error al cerrar ServerSocket: " + e.getMessage());
+            System.err.println("[WARN] Error al cerrar ServerSocket: " + e.getMessage());
         }
 
         // Desconectar clientes activos en la sala
@@ -143,7 +143,7 @@ public class ChatServer {
             Thread.currentThread().interrupt();
         }
 
-        System.out.println("✅ Servidor detenido correctamente.");
+        System.out.println("[OK] Servidor detenido correctamente.");
     }
 
     public boolean isRunning() {
@@ -167,7 +167,7 @@ public class ChatServer {
             try {
                 port = Integer.parseInt(args[0]);
             } catch (NumberFormatException e) {
-                System.err.println("⚠️ Puerto no válido, usando puerto por defecto: " + DEFAULT_PORT);
+                System.err.println("[WARN] Puerto no válido, usando puerto por defecto: " + DEFAULT_PORT);
             }
         }
 
@@ -175,7 +175,7 @@ public class ChatServer {
         try {
             server.start();
         } catch (IOException e) {
-            System.err.println("❌ Fallo crítico al iniciar el servidor en puerto " + port + ": " + e.getMessage());
+            System.err.println("[ERROR] Fallo crítico al iniciar el servidor en puerto " + port + ": " + e.getMessage());
             System.exit(1);
         }
     }

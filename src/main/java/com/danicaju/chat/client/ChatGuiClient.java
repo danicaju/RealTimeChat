@@ -8,6 +8,7 @@ import com.formdev.flatlaf.FlatDarkLaf;
 import javax.swing.BorderFactory;
 import javax.swing.DefaultListCellRenderer;
 import javax.swing.DefaultListModel;
+import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JDialog;
@@ -42,8 +43,10 @@ import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
+import java.awt.Image;
 import java.awt.Insets;
 import java.awt.RenderingHints;
+import java.awt.Taskbar;
 import java.awt.event.KeyAdapter;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
@@ -134,8 +137,57 @@ public class ChatGuiClient extends JFrame implements ChatEventListener {
         setupTypingDetection();
     }
 
+    private void setupWindowIcons() {
+        try {
+            List<Image> iconList = new ArrayList<>();
+            int[] sizes = {16, 20, 24, 28, 32, 48, 64, 128, 256, 512};
+            for (int s : sizes) {
+                java.net.URL url = getClass().getResource("/icons/icon-" + s + ".png");
+                if (url != null) {
+                    iconList.add(new ImageIcon(url).getImage());
+                }
+            }
+            if (iconList.isEmpty()) {
+                java.net.URL fallback = getClass().getResource("/icons/app-icon.png");
+                if (fallback != null) {
+                    iconList.add(new ImageIcon(fallback).getImage());
+                }
+            }
+            if (!iconList.isEmpty()) {
+                setIconImages(iconList);
+
+                // Soporte para icono en la barra de tareas de Windows 10/11 / macOS
+                if (Taskbar.isTaskbarSupported()) {
+                    Taskbar taskbar = Taskbar.getTaskbar();
+                    if (taskbar.isSupported(Taskbar.Feature.ICON_IMAGE)) {
+                        taskbar.setIconImage(iconList.get(iconList.size() - 1));
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // Ignorar si no hay entorno gráfico disponible
+        }
+    }
+
+    public static ImageIcon getAppImageIcon(int size) {
+        try {
+            java.net.URL url = ChatGuiClient.class.getResource("/icons/icon-" + size + ".png");
+            if (url != null) {
+                return new ImageIcon(url);
+            }
+            java.net.URL fallback = ChatGuiClient.class.getResource("/icons/app-icon.png");
+            if (fallback != null) {
+                Image img = new ImageIcon(fallback).getImage();
+                return new ImageIcon(img.getScaledInstance(size, size, Image.SCALE_SMOOTH));
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
     private void initComponents() {
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setupWindowIcons();
         setSize(1080, 720);
         setMinimumSize(new Dimension(800, 520));
         setLocationRelativeTo(null);
@@ -178,6 +230,11 @@ public class ChatGuiClient extends JFrame implements ChatEventListener {
         leftHeader.setOpaque(false);
 
         JLabel appTitle = new JLabel("RealTimeChat NextGen");
+        ImageIcon headerIcon = getAppImageIcon(28);
+        if (headerIcon != null) {
+            appTitle.setIcon(headerIcon);
+            appTitle.setIconTextGap(10);
+        }
         appTitle.setFont(new Font("Segoe UI", Font.BOLD, 16));
         appTitle.setForeground(new Color(242, 243, 245));
 
@@ -733,7 +790,10 @@ public class ChatGuiClient extends JFrame implements ChatEventListener {
     public void showConnectionDialog() {
         JDialog dialog = new JDialog(this, "Conexión a RealTimeChat NextGen", true);
         this.activeDialog = dialog;
-        dialog.setSize(380, 280);
+        if (!getIconImages().isEmpty()) {
+            dialog.setIconImages(getIconImages());
+        }
+        dialog.setSize(410, 355);
         dialog.setLocationRelativeTo(this);
         dialog.setResizable(false);
         dialog.addWindowListener(new WindowAdapter() {
@@ -745,8 +805,38 @@ public class ChatGuiClient extends JFrame implements ChatEventListener {
             }
         });
 
+        JPanel wrapper = new JPanel(new BorderLayout());
+
+        // Cabecera visual con el icono de la app
+        JPanel brandHeader = new JPanel(new FlowLayout(FlowLayout.LEFT, 14, 12));
+        brandHeader.setBackground(new Color(30, 31, 35));
+        brandHeader.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(53, 55, 60)),
+                new EmptyBorder(4, 10, 4, 10)
+        ));
+        ImageIcon dlgIcon = getAppImageIcon(48);
+        if (dlgIcon != null) {
+            brandHeader.add(new JLabel(dlgIcon));
+        }
+        JPanel brandText = new JPanel(new GridBagLayout());
+        brandText.setOpaque(false);
+        GridBagConstraints bgbc = new GridBagConstraints();
+        bgbc.anchor = GridBagConstraints.WEST;
+        bgbc.gridx = 0; bgbc.gridy = 0;
+        JLabel titleLbl = new JLabel("RealTimeChat NextGen");
+        titleLbl.setFont(new Font("Segoe UI", Font.BOLD, 17));
+        titleLbl.setForeground(new Color(242, 243, 245));
+        brandText.add(titleLbl, bgbc);
+        bgbc.gridy = 1;
+        JLabel subLbl = new JLabel("Canales en tiempo real · Perfiles · Bot IA");
+        subLbl.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        subLbl.setForeground(new Color(148, 155, 164));
+        brandText.add(subLbl, bgbc);
+        brandHeader.add(brandText);
+        wrapper.add(brandHeader, BorderLayout.NORTH);
+
         JPanel panel = new JPanel(new GridBagLayout());
-        panel.setBorder(new EmptyBorder(20, 24, 20, 24));
+        panel.setBorder(new EmptyBorder(16, 24, 16, 24));
         GridBagConstraints gbc = new GridBagConstraints();
         gbc.fill = GridBagConstraints.HORIZONTAL;
         gbc.insets = new Insets(6, 4, 6, 4);
@@ -825,7 +915,9 @@ public class ChatGuiClient extends JFrame implements ChatEventListener {
         btnPanel.add(cancelBtn);
         btnPanel.add(connectBtn);
 
-        dialog.setContentPane(panel);
+        wrapper.add(panel, BorderLayout.CENTER);
+        dialog.setContentPane(wrapper);
+        dialog.getRootPane().setDefaultButton(connectBtn);
         dialog.setVisible(true);
     }
 
@@ -961,12 +1053,12 @@ public class ChatGuiClient extends JFrame implements ChatEventListener {
                 typingIndicatorLabel.setText(" ");
             } else if (activeTypingUsers.size() == 1) {
                 String u = activeTypingUsers.iterator().next();
-                typingIndicatorLabel.setText("✍️ @" + u + " está escribiendo en " + channel + "...");
+                typingIndicatorLabel.setText("... @" + u + " está escribiendo en " + channel + "...");
             } else if (activeTypingUsers.size() == 2) {
                 List<String> list = new ArrayList<>(activeTypingUsers);
-                typingIndicatorLabel.setText("✍️ @" + list.get(0) + " y @" + list.get(1) + " están escribiendo...");
+                typingIndicatorLabel.setText("... @" + list.get(0) + " y @" + list.get(1) + " están escribiendo...");
             } else {
-                typingIndicatorLabel.setText("✍️ Varias personas están escribiendo...");
+                typingIndicatorLabel.setText("... Varias personas están escribiendo...");
             }
         });
     }
@@ -977,7 +1069,7 @@ public class ChatGuiClient extends JFrame implements ChatEventListener {
             if (history == null || history.isEmpty()) {
                 return;
             }
-            String divider = "<div class='history-divider'>── Mensajes anteriores en " + escapeHtml(channel) + " (" + history.size() + ") ──</div>";
+            String divider = "<div class='history-divider'>--- Mensajes anteriores en " + escapeHtml(channel) + " (" + history.size() + ") ---</div>";
             appendHtml(divider);
 
             for (Message m : history) {

@@ -165,7 +165,7 @@ public class ChatRoom {
                 }
                 String clientChannel = getUserChannel(entry.getKey());
                 if (normTarget.equalsIgnoreCase(clientChannel)) {
-                    client.sendMessageRaw(payload);
+                    client.deliverBroadcast(payload);
                 }
             }
         } else {
@@ -173,7 +173,7 @@ public class ChatRoom {
             String payload = message.toJson();
             for (ClientHandler client : clients.values()) {
                 if (exclude == null || client != exclude) {
-                    client.sendMessageRaw(payload);
+                    client.deliverBroadcast(payload);
                 }
             }
         }
@@ -189,7 +189,7 @@ public class ChatRoom {
         String payload = message.toJson();
         for (ClientHandler client : clients.values()) {
             if (exclude == null || client != exclude) {
-                client.sendMessageRaw(payload);
+                client.deliverBroadcast(payload);
             }
         }
     }
@@ -237,7 +237,7 @@ public class ChatRoom {
         }
         ClientHandler targetHandler = clients.get(targetUsername.trim());
         if (targetHandler != null) {
-            targetHandler.sendMessageRaw(message.toJson());
+            targetHandler.deliverBroadcast(message.toJson());
             return true;
         }
         return false;
@@ -273,7 +273,7 @@ public class ChatRoom {
         for (java.util.Map.Entry<String, ClientHandler> entry : clients.entrySet()) {
             String ch = getUserChannel(entry.getKey());
             List<String> channelUsers = getActiveUsersInChannel(ch);
-            entry.getValue().sendMessageRaw(Message.userList(ch, channelUsers).toJson());
+            entry.getValue().deliverBroadcast(Message.userList(ch, channelUsers).toJson());
         }
     }
 
@@ -288,7 +288,7 @@ public class ChatRoom {
 
         for (java.util.Map.Entry<String, ClientHandler> entry : clients.entrySet()) {
             if (norm.equalsIgnoreCase(getUserChannel(entry.getKey()))) {
-                entry.getValue().sendMessageRaw(payload);
+                entry.getValue().deliverBroadcast(payload);
             }
         }
     }
@@ -310,7 +310,7 @@ public class ChatRoom {
                 continue;
             }
             if (norm.equalsIgnoreCase(getUserChannel(entry.getKey()))) {
-                client.sendMessageRaw(payload);
+                client.deliverBroadcast(payload);
             }
         }
     }

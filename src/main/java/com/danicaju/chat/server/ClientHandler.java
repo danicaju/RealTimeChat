@@ -34,6 +34,7 @@ public class ClientHandler implements Runnable {
     private BufferedReader reader;
     private String username;
     private volatile boolean running = true;
+    private volatile boolean readyForBroadcasts;
 
     public ClientHandler(Socket socket, ChatRoom chatRoom) {
         this(socket, chatRoom, null);
@@ -43,6 +44,7 @@ public class ClientHandler implements Runnable {
         this.socket = socket;
         this.chatRoom = chatRoom;
         this.threadPool = threadPool;
+        this.readyForBroadcasts = (socket == null);
         // Capacidad para ráfaga de 6 mensajes con recarga de 2.5 mensajes por segundo
         this.rateLimiter = new TokenBucketRateLimiter(6.0, 2.5);
     }
@@ -112,9 +114,12 @@ public class ClientHandler implements Runnable {
                     // Enviar lista de canales disponibles
                     sendMessageRaw(Message.channelList(chatRoom.getAvailableChannels()).toJson());
 
+                    // A partir de aqui este cliente ya puede recibir broadcasts asincronos sin interferir en su handshake
+                    this.readyForBroadcasts = true;
+
                     // Notificar unión al canal por defecto (#general)
                     String defaultChan = ChatRoom.DEFAULT_CHANNEL;
-                    chatRoom.broadcast(Message.system("🟢 " + this.username + " se ha unido a la sala (" + defaultChan + ")."), this);
+                    chatRoom.broadcast(Message.system("[+] " + this.username + " se ha unido a la sala (" + defaultChan + ")."), this);
 
                     // Entregar búfer de reproducción (historial) del canal al usuario recién conectado
                     List<Message> history = chatRoom.getChannelHistory(defaultChan);
@@ -156,7 +161,7 @@ public class ClientHandler implements Runnable {
                 msg.getType() == MessageType.PROFILE_REQUEST || msg.getType() == MessageType.USER_LIST ||
                 msg.getType() == MessageType.CHANNEL_LIST) {
             if (!rateLimiter.tryConsume()) {
-                sendMessageRaw(Message.system("⚠️ [RATE LIMIT] Has enviado demasiados mensajes o peticiones por segundo. Por favor, espera un momento.").toJson());
+                sendMessageRaw(Message.system("[RATE LIMIT] Has enviado demasiados mensajes o peticiones por segundo. Por favor, espera un momento.").toJson());
                 return;
             }
         }
@@ -282,12 +287,12 @@ public class ClientHandler implements Runnable {
         }
 
         // Notificar en el canal anterior
-        Message leftMsg = Message.system(oldChannel, "🚪 " + this.username + " ha cambiado de canal.");
+        Message leftMsg = Message.system(oldChannel, "[-] " + this.username + " ha cambiado de canal.");
         chatRoom.broadcast(leftMsg, this);
         chatRoom.broadcastChannelUserList(oldChannel);
 
         // Notificar en el nuevo canal
-        Message joinedMsg = Message.system(newChannel, "🟢 " + this.username + " se ha unido a " + newChannel + ".");
+        Message joinedMsg = Message.system(newChannel, "[+] " + this.username + " se ha unido a " + newChannel + ".");
         chatRoom.broadcast(joinedMsg, this);
         chatRoom.broadcastChannelUserList(newChannel);
 
@@ -317,6 +322,15 @@ public class ClientHandler implements Runnable {
     }
 
     /**
+     * Entrega un mensaje broadcast únicamente si el handshake inicial del cliente ya finalizó.
+     */
+    public void deliverBroadcast(String json) {
+        if (readyForBroadcasts) {
+            sendMessageRaw(json);
+        }
+    }
+
+    /**
      * Envía una cadena JSON cruda de manera sincronizada para evitar intercalado de bytes.
      */
     public synchronized void sendMessageRaw(String json) {
@@ -333,11 +347,12 @@ public class ClientHandler implements Runnable {
             return;
         }
         running = false;
+        readyForBroadcasts = false;
         if (username != null) {
             String ch = chatRoom.getUserChannel(username);
             boolean removed = chatRoom.unregisterClient(username, this);
             if (removed) {
-                chatRoom.broadcast(Message.system("🔴 " + username + " ha abandonado la sala."), null);
+                chatRoom.broadcast(Message.system("[-] " + username + " ha abandonado la sala."), null);
                 chatRoom.broadcastChannelUserList(ch);
             }
             username = null;
