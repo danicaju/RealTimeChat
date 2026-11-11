@@ -10,13 +10,15 @@ import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 /**
- * Representa la unidad fundamental de datos intercambiada en el protocolo de RealTimeChat.
- * Soporta canales, historial de mensajes, estados de escritura (typing), perfiles de usuario
- * y mensajería pública/privada en formato JSON mediante Jackson.
+ * Unidad fundamental de datos intercambiada en el protocolo JSON de RealTimeChat.
+ * Soporta canales, cursor pagination, optimistic UI ACK, threads, reacciones,
+ * presencia, roles bitfield, polls, webhooks, embeds OpenGraph, E2EE, pizarra y voz.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 @JsonIgnoreProperties(ignoreUnknown = true)
@@ -27,6 +29,8 @@ public class Message {
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .registerModule(new JavaTimeModule());
 
+    private Long id;
+    private String tempId;
     private MessageType type;
     private String sender;
     private String target;
@@ -37,6 +41,47 @@ public class Message {
     private List<Message> history;
     private UserProfile profile;
     private long timestamp;
+
+    // --- FASE 1: Threads, Reacciones y Presencia ---
+    private Long replyToId;
+    private String replySender;
+    private String replyPreview;
+    private Long threadParentId;
+    private Integer threadReplyCount;
+    private Map<String, List<String>> reactions;
+    private PresenceStatus presenceStatus;
+    private String customStatus;
+    private String statusSymbol;
+    private Map<String, UserProfile> userProfiles;
+
+    // --- FASE 2: Cursores, Canales y Roles ---
+    private Long beforeId;
+    private Long afterId;
+    private Integer limit;
+    private Boolean hasMore;
+    private List<ChannelInfo> channelInfos;
+    private ChannelInfo channelInfo;
+    private String role;
+    private Long permissions;
+
+    // --- FASE 3: Polls, Webhooks y Búsqueda ---
+    private PollData poll;
+    private Integer pollOptionIndex;
+    private WebhookInfo webhookInfo;
+    private List<WebhookInfo> webhooks;
+
+    // --- FASE 4: Multimedia, OpenGraph, Voz/WebRTC y E2EE ---
+    private String attachmentName;
+    private String attachmentBase64;
+    private EmbedData embed;
+    private Boolean encrypted;
+    private String iv;
+    private String senderPublicKey;
+    private Double voiceLevel;
+    private Boolean voiceMuted;
+    private Boolean voiceDeafened;
+    private String signalType;
+    private String signalPayload;
 
     public Message() {
         this.timestamp = Instant.now().toEpochMilli();
@@ -51,7 +96,7 @@ public class Message {
         this.timestamp = timestamp > 0 ? timestamp : Instant.now().toEpochMilli();
     }
 
-    // --- Métodos de factoría para instanciación limpia y consistente ---
+    // --- Métodos de factoría base ---
 
     public static Message join(String username) {
         Message msg = new Message();
@@ -181,6 +226,240 @@ public class Message {
         return msg;
     }
 
+    // --- Nuevos métodos de factoría (Fases 1-4) ---
+
+    public static Message ack(String tempId, Long id, String channel, long timestamp) {
+        Message msg = new Message();
+        msg.setType(MessageType.MESSAGE_ACK);
+        msg.setTempId(tempId);
+        msg.setId(id);
+        msg.setChannel(channel);
+        msg.setTimestamp(timestamp);
+        return msg;
+    }
+
+    public static Message deleteMsg(Long id, String channel, String sender) {
+        Message msg = new Message();
+        msg.setType(MessageType.MESSAGE_DELETE);
+        msg.setId(id);
+        msg.setChannel(channel);
+        msg.setSender(sender);
+        return msg;
+    }
+
+    public static Message reactionAdd(Long messageId, String channel, String sender, String emoji) {
+        Message msg = new Message();
+        msg.setType(MessageType.REACTION_ADD);
+        msg.setId(messageId);
+        msg.setChannel(channel);
+        msg.setSender(sender);
+        msg.setContent(emoji);
+        return msg;
+    }
+
+    public static Message reactionRemove(Long messageId, String channel, String sender, String emoji) {
+        Message msg = new Message();
+        msg.setType(MessageType.REACTION_REMOVE);
+        msg.setId(messageId);
+        msg.setChannel(channel);
+        msg.setSender(sender);
+        msg.setContent(emoji);
+        return msg;
+    }
+
+    public static Message presenceUpdate(String sender, PresenceStatus status, String customStatus, String statusSymbol) {
+        Message msg = new Message();
+        msg.setType(MessageType.PRESENCE_UPDATE);
+        msg.setSender(sender);
+        msg.setPresenceStatus(status);
+        msg.setCustomStatus(customStatus);
+        msg.setStatusSymbol(statusSymbol);
+        return msg;
+    }
+
+    public static Message ping(String sender) {
+        Message msg = new Message();
+        msg.setType(MessageType.PING);
+        msg.setSender(sender);
+        return msg;
+    }
+
+    public static Message pong() {
+        Message msg = new Message();
+        msg.setType(MessageType.PONG);
+        return msg;
+    }
+
+    public static Message historyPageRequest(String sender, String channel, Long beforeId, Long afterId, int limit) {
+        Message msg = new Message();
+        msg.setType(MessageType.HISTORY_PAGE);
+        msg.setSender(sender);
+        msg.setChannel(channel);
+        msg.setBeforeId(beforeId);
+        msg.setAfterId(afterId);
+        msg.setLimit(limit);
+        return msg;
+    }
+
+    public static Message historyPageResponse(String channel, List<Message> history, boolean hasMore, Long beforeId, Long afterId) {
+        Message msg = new Message();
+        msg.setType(MessageType.HISTORY_PAGE);
+        msg.setChannel(channel);
+        msg.setHistory(history);
+        msg.setHasMore(hasMore);
+        msg.setBeforeId(beforeId);
+        msg.setAfterId(afterId);
+        return msg;
+    }
+
+    public static Message channelCreate(String sender, ChannelInfo info) {
+        Message msg = new Message();
+        msg.setType(MessageType.CHANNEL_CREATE);
+        msg.setSender(sender);
+        msg.setChannelInfo(info);
+        if (info != null) {
+            msg.setChannel(info.getName());
+        }
+        return msg;
+    }
+
+    public static Message channelDelete(String sender, String channel) {
+        Message msg = new Message();
+        msg.setType(MessageType.CHANNEL_DELETE);
+        msg.setSender(sender);
+        msg.setChannel(channel);
+        return msg;
+    }
+
+    public static Message channelMetadata(List<ChannelInfo> infos) {
+        Message msg = new Message();
+        msg.setType(MessageType.CHANNEL_METADATA);
+        msg.setChannelInfos(infos);
+        return msg;
+    }
+
+    public static Message roleUpdate(String sender, String targetUser, String role, Long permissions, ChannelInfo channelOverrideUpdate) {
+        Message msg = new Message();
+        msg.setType(MessageType.ROLE_UPDATE);
+        msg.setSender(sender);
+        msg.setTarget(targetUser);
+        msg.setRole(role);
+        msg.setPermissions(permissions);
+        msg.setChannelInfo(channelOverrideUpdate);
+        return msg;
+    }
+
+    public static Message pollVote(String channel, String sender, Long messageId, int optionIndex) {
+        Message msg = new Message();
+        msg.setType(MessageType.POLL_VOTE);
+        msg.setChannel(channel);
+        msg.setSender(sender);
+        msg.setId(messageId);
+        msg.setPollOptionIndex(optionIndex);
+        return msg;
+    }
+
+    public static Message webhookCreate(String sender, String channel, String name) {
+        Message msg = new Message();
+        msg.setType(MessageType.WEBHOOK_CREATE);
+        msg.setSender(sender);
+        msg.setChannel(channel);
+        msg.setContent(name);
+        return msg;
+    }
+
+    public static Message webhookDelete(String sender, String channel, String webhookId) {
+        Message msg = new Message();
+        msg.setType(MessageType.WEBHOOK_DELETE);
+        msg.setSender(sender);
+        msg.setChannel(channel);
+        msg.setContent(webhookId);
+        return msg;
+    }
+
+    public static Message webhookList(String channel, List<WebhookInfo> webhooks) {
+        Message msg = new Message();
+        msg.setType(MessageType.WEBHOOK_LIST);
+        msg.setChannel(channel);
+        msg.setWebhooks(webhooks);
+        return msg;
+    }
+
+    public static Message searchRequest(String sender, String query) {
+        Message msg = new Message();
+        msg.setType(MessageType.SEARCH_REQUEST);
+        msg.setSender(sender);
+        msg.setContent(query);
+        return msg;
+    }
+
+    public static Message searchResponse(String query, List<Message> results) {
+        Message msg = new Message();
+        msg.setType(MessageType.SEARCH_RESPONSE);
+        msg.setContent(query);
+        msg.setHistory(results);
+        return msg;
+    }
+
+    public static Message embedUpdate(Long messageId, String channel, EmbedData embed) {
+        Message msg = new Message();
+        msg.setType(MessageType.MESSAGE_EMBED_UPDATE);
+        msg.setId(messageId);
+        msg.setChannel(channel);
+        msg.setEmbed(embed);
+        return msg;
+    }
+
+    public static Message keyExchange(String sender, String target, String publicKeyBase64) {
+        Message msg = new Message();
+        msg.setType(MessageType.KEY_EXCHANGE);
+        msg.setSender(sender);
+        msg.setTarget(target);
+        msg.setSenderPublicKey(publicKeyBase64);
+        return msg;
+    }
+
+    public static Message whiteboardEvent(String channel, String sender, String payloadJson) {
+        Message msg = new Message();
+        msg.setType(MessageType.WHITEBOARD_EVENT);
+        msg.setChannel(channel);
+        msg.setSender(sender);
+        msg.setContent(payloadJson);
+        return msg;
+    }
+
+    public static Message voiceState(String channel, String sender, boolean muted, boolean deafened, double level, List<String> participants) {
+        Message msg = new Message();
+        msg.setType(MessageType.VOICE_STATE);
+        msg.setChannel(channel);
+        msg.setSender(sender);
+        msg.setVoiceMuted(muted);
+        msg.setVoiceDeafened(deafened);
+        msg.setVoiceLevel(level);
+        msg.setUsers(participants);
+        return msg;
+    }
+
+    public static Message voiceAudio(String channel, String sender, String base64Audio) {
+        Message msg = new Message();
+        msg.setType(MessageType.VOICE_AUDIO);
+        msg.setChannel(channel);
+        msg.setSender(sender);
+        msg.setContent(base64Audio);
+        return msg;
+    }
+
+    public static Message webrtcSignal(String sender, String target, String channel, String signalType, String signalPayload) {
+        Message msg = new Message();
+        msg.setType(MessageType.WEBRTC_SIGNAL);
+        msg.setSender(sender);
+        msg.setTarget(target);
+        msg.setChannel(channel);
+        msg.setSignalType(signalType);
+        msg.setSignalPayload(signalPayload);
+        return msg;
+    }
+
     // --- Métodos de serialización y deserialización JSON ---
 
     public String toJson() {
@@ -199,6 +478,22 @@ public class Message {
     }
 
     // --- Getters y Setters ---
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getTempId() {
+        return tempId;
+    }
+
+    public void setTempId(String tempId) {
+        this.tempId = tempId;
+    }
 
     public MessageType getType() {
         return type;
@@ -280,12 +575,281 @@ public class Message {
         this.timestamp = timestamp;
     }
 
+    public Long getReplyToId() {
+        return replyToId;
+    }
+
+    public void setReplyToId(Long replyToId) {
+        this.replyToId = replyToId;
+    }
+
+    public String getReplySender() {
+        return replySender;
+    }
+
+    public void setReplySender(String replySender) {
+        this.replySender = replySender;
+    }
+
+    public String getReplyPreview() {
+        return replyPreview;
+    }
+
+    public void setReplyPreview(String replyPreview) {
+        this.replyPreview = replyPreview;
+    }
+
+    public Long getThreadParentId() {
+        return threadParentId;
+    }
+
+    public void setThreadParentId(Long threadParentId) {
+        this.threadParentId = threadParentId;
+    }
+
+    public Integer getThreadReplyCount() {
+        return threadReplyCount;
+    }
+
+    public void setThreadReplyCount(Integer threadReplyCount) {
+        this.threadReplyCount = threadReplyCount;
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public Map<String, List<String>> getReactions() {
+        return reactions;
+    }
+
+    public void setReactions(Map<String, List<String>> reactions) {
+        this.reactions = reactions != null ? new LinkedHashMap<>(reactions) : null;
+    }
+
+    public PresenceStatus getPresenceStatus() {
+        return presenceStatus;
+    }
+
+    public void setPresenceStatus(PresenceStatus presenceStatus) {
+        this.presenceStatus = presenceStatus;
+    }
+
+    public String getCustomStatus() {
+        return customStatus;
+    }
+
+    public void setCustomStatus(String customStatus) {
+        this.customStatus = customStatus;
+    }
+
+    public String getStatusSymbol() {
+        return statusSymbol;
+    }
+
+    public void setStatusSymbol(String statusSymbol) {
+        this.statusSymbol = statusSymbol;
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public Map<String, UserProfile> getUserProfiles() {
+        return userProfiles;
+    }
+
+    public void setUserProfiles(Map<String, UserProfile> userProfiles) {
+        this.userProfiles = userProfiles != null ? new LinkedHashMap<>(userProfiles) : null;
+    }
+
+    public Long getBeforeId() {
+        return beforeId;
+    }
+
+    public void setBeforeId(Long beforeId) {
+        this.beforeId = beforeId;
+    }
+
+    public Long getAfterId() {
+        return afterId;
+    }
+
+    public void setAfterId(Long afterId) {
+        this.afterId = afterId;
+    }
+
+    public Integer getLimit() {
+        return limit;
+    }
+
+    public void setLimit(Integer limit) {
+        this.limit = limit;
+    }
+
+    public Boolean getHasMore() {
+        return hasMore;
+    }
+
+    public void setHasMore(Boolean hasMore) {
+        this.hasMore = hasMore;
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public List<ChannelInfo> getChannelInfos() {
+        return channelInfos;
+    }
+
+    public void setChannelInfos(List<ChannelInfo> channelInfos) {
+        this.channelInfos = channelInfos != null ? new ArrayList<>(channelInfos) : null;
+    }
+
+    public ChannelInfo getChannelInfo() {
+        return channelInfo;
+    }
+
+    public void setChannelInfo(ChannelInfo channelInfo) {
+        this.channelInfo = channelInfo;
+    }
+
+    public String getRole() {
+        return role;
+    }
+
+    public void setRole(String role) {
+        this.role = role;
+    }
+
+    public Long getPermissions() {
+        return permissions;
+    }
+
+    public void setPermissions(Long permissions) {
+        this.permissions = permissions;
+    }
+
+    public PollData getPoll() {
+        return poll;
+    }
+
+    public void setPoll(PollData poll) {
+        this.poll = poll;
+    }
+
+    public Integer getPollOptionIndex() {
+        return pollOptionIndex;
+    }
+
+    public void setPollOptionIndex(Integer pollOptionIndex) {
+        this.pollOptionIndex = pollOptionIndex;
+    }
+
+    public WebhookInfo getWebhookInfo() {
+        return webhookInfo;
+    }
+
+    public void setWebhookInfo(WebhookInfo webhookInfo) {
+        this.webhookInfo = webhookInfo;
+    }
+
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    public List<WebhookInfo> getWebhooks() {
+        return webhooks;
+    }
+
+    public void setWebhooks(List<WebhookInfo> webhooks) {
+        this.webhooks = webhooks != null ? new ArrayList<>(webhooks) : null;
+    }
+
+    public String getAttachmentName() {
+        return attachmentName;
+    }
+
+    public void setAttachmentName(String attachmentName) {
+        this.attachmentName = attachmentName;
+    }
+
+    public String getAttachmentBase64() {
+        return attachmentBase64;
+    }
+
+    public void setAttachmentBase64(String attachmentBase64) {
+        this.attachmentBase64 = attachmentBase64;
+    }
+
+    public EmbedData getEmbed() {
+        return embed;
+    }
+
+    public void setEmbed(EmbedData embed) {
+        this.embed = embed;
+    }
+
+    public Boolean getEncrypted() {
+        return encrypted;
+    }
+
+    public void setEncrypted(Boolean encrypted) {
+        this.encrypted = encrypted;
+    }
+
+    public String getIv() {
+        return iv;
+    }
+
+    public void setIv(String iv) {
+        this.iv = iv;
+    }
+
+    public String getSenderPublicKey() {
+        return senderPublicKey;
+    }
+
+    public void setSenderPublicKey(String senderPublicKey) {
+        this.senderPublicKey = senderPublicKey;
+    }
+
+    public Double getVoiceLevel() {
+        return voiceLevel;
+    }
+
+    public void setVoiceLevel(Double voiceLevel) {
+        this.voiceLevel = voiceLevel;
+    }
+
+    public Boolean getVoiceMuted() {
+        return voiceMuted;
+    }
+
+    public void setVoiceMuted(Boolean voiceMuted) {
+        this.voiceMuted = voiceMuted;
+    }
+
+    public Boolean getVoiceDeafened() {
+        return voiceDeafened;
+    }
+
+    public void setVoiceDeafened(Boolean voiceDeafened) {
+        this.voiceDeafened = voiceDeafened;
+    }
+
+    public String getSignalType() {
+        return signalType;
+    }
+
+    public void setSignalType(String signalType) {
+        this.signalType = signalType;
+    }
+
+    public String getSignalPayload() {
+        return signalPayload;
+    }
+
+    public void setSignalPayload(String signalPayload) {
+        this.signalPayload = signalPayload;
+    }
+
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof Message)) return false;
-        Message message = (Message) o;
+        if (!(o instanceof Message message)) return false;
         return timestamp == message.timestamp &&
+                Objects.equals(id, message.id) &&
+                Objects.equals(tempId, message.tempId) &&
                 type == message.type &&
                 Objects.equals(sender, message.sender) &&
                 Objects.equals(target, message.target) &&
@@ -294,26 +858,33 @@ public class Message {
                 Objects.equals(users, message.users) &&
                 Objects.equals(channels, message.channels) &&
                 Objects.equals(history, message.history) &&
-                Objects.equals(profile, message.profile);
+                Objects.equals(profile, message.profile) &&
+                Objects.equals(replyToId, message.replyToId) &&
+                Objects.equals(threadParentId, message.threadParentId) &&
+                Objects.equals(reactions, message.reactions) &&
+                Objects.equals(embed, message.embed) &&
+                Objects.equals(poll, message.poll) &&
+                Objects.equals(encrypted, message.encrypted) &&
+                Objects.equals(iv, message.iv);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(type, sender, target, content, channel, users, channels, history, profile, timestamp);
+        return Objects.hash(id, tempId, type, sender, target, content, channel,
+                users, channels, history, profile, timestamp, replyToId, threadParentId,
+                reactions, embed, poll, encrypted, iv);
     }
 
     @Override
     public String toString() {
         return "Message{" +
-                "type=" + type +
+                "id=" + id +
+                ", tempId='" + tempId + '\'' +
+                ", type=" + type +
                 ", sender='" + sender + '\'' +
                 ", target='" + target + '\'' +
                 ", content='" + content + '\'' +
                 ", channel='" + channel + '\'' +
-                ", users=" + users +
-                ", channels=" + channels +
-                ", history=" + (history != null ? history.size() : 0) +
-                ", profile=" + profile +
                 ", timestamp=" + timestamp +
                 '}';
     }

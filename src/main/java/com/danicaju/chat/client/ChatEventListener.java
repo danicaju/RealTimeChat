@@ -1,88 +1,75 @@
 package com.danicaju.chat.client;
 
+import com.danicaju.chat.model.ChannelInfo;
+import com.danicaju.chat.model.EmbedData;
 import com.danicaju.chat.model.Message;
+import com.danicaju.chat.model.PollData;
+import com.danicaju.chat.model.PresenceStatus;
 import com.danicaju.chat.model.UserProfile;
+import com.danicaju.chat.model.WebhookInfo;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Interfaz de eventos reactivos para clientes de RealTimeChat.
- * Desacopla el motor de red TCP y protocolo JSON de las interfaces de usuario (CLI o Swing GUI),
- * añadiendo soporte para canales múltiples, historial de mensajes, estados de escritura (typing)
- * y personalización de perfiles.
+ * Desacopla el motor de red TCP y protocolo JSON de las interfaces de usuario (CLI o Swing GUI).
  */
 public interface ChatEventListener {
 
-    /**
-     * Invocado cuando la conexión y el handshake JOIN han sido confirmados por el servidor.
-     *
-     * @param username Nickname asignado con éxito
-     */
     void onConnected(String username);
 
-    /**
-     * Invocado al recibir un mensaje (público, privado o del sistema).
-     *
-     * @param message Objeto de mensaje recibido
-     */
     void onMessageReceived(Message message);
 
-    /**
-     * Invocado cuando la lista de usuarios activos de la sala/canal es actualizada.
-     *
-     * @param users Lista de usuarios conectados
-     */
     void onUserListUpdated(List<String> users);
 
-    /**
-     * Invocado cuando la conexión finaliza (por desconexión voluntaria o error).
-     *
-     * @param reason Causa o motivo de la desconexión
-     */
     void onDisconnected(String reason);
 
-    /**
-     * Invocado cuando ocurre un error en la conexión o en el envío de comandos.
-     *
-     * @param errorMessage Descripción del error
-     */
     void onError(String errorMessage);
 
-    /**
-     * Invocado cuando se recibe la lista de canales disponibles en el servidor.
-     *
-     * @param channels Lista de nombres de canales (ej: #general, #ia-computacion, #random)
-     */
     default void onChannelListUpdated(List<String> channels) {}
 
-    /**
-     * Invocado cuando el cliente cambia exitosamente de canal.
-     *
-     * @param newChannel Nuevo canal activo
-     */
     default void onChannelChanged(String newChannel) {}
 
-    /**
-     * Invocado cuando un usuario comienza o deja de escribir en el canal actual.
-     *
-     * @param sender   Usuario que escribe
-     * @param channel  Canal donde ocurre la acción
-     * @param isTyping true si comenzó a escribir, false si se detuvo
-     */
     default void onTypingUpdated(String sender, String channel, boolean isTyping) {}
 
-    /**
-     * Invocado cuando se recibe el búfer de reproducción (historial reciente) del canal.
-     *
-     * @param channel Canal al que pertenece el historial
-     * @param history Lista de mensajes recientes
-     */
     default void onHistoryReceived(String channel, List<Message> history) {}
 
-    /**
-     * Invocado cuando se recibe el perfil de un usuario (propio o consultado).
-     *
-     * @param profile Perfil de usuario con avatar, bio y banner
-     */
     default void onProfileReceived(UserProfile profile) {}
+
+    // --- Eventos de Fases 1-4 ---
+
+    default void onUserProfilesUpdated(Map<String, UserProfile> profiles) {}
+
+    default void onMessageAck(String tempId, Long id, String channel, long timestamp) {}
+
+    default void onMessageSendError(String tempId, Message failedMessage, String error) {}
+
+    default void onMessageDeleted(Long messageId, String channel, String deletedBy) {}
+
+    default void onReactionUpdated(Long messageId, String channel, String sender, String emoji, boolean added, Map<String, List<String>> reactions) {}
+
+    default void onPresenceUpdated(String username, PresenceStatus status, String customStatus, String statusSymbol) {}
+
+    default void onHistoryPageReceived(String channel, List<Message> history, boolean hasMore, Long beforeId, Long afterId, Long threadParentId) {}
+
+    default void onChannelMetadataUpdated(List<ChannelInfo> channels) {}
+
+    default void onMessageEmbedUpdated(Long messageId, String channel, EmbedData embed) {}
+
+    default void onPollUpdated(Long messageId, String channel, PollData poll) {}
+
+    default void onWebhookListReceived(String channel, List<WebhookInfo> webhooks) {}
+
+    default void onSearchResultsReceived(String query, List<Message> results) {}
+
+    default void onKeyExchangeReceived(String username, String publicKeyBase64) {}
+
+    default void onWhiteboardEvent(String channel, String sender, String payloadJson) {}
+
+    default void onVoiceStateUpdated(Message stateMessage) {}
+
+    default void onVoiceAudioReceived(String channel, String sender, String base64Audio) {}
+
+    default void onWebrtcSignalReceived(Message signalMessage) {}
 }

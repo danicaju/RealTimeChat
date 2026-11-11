@@ -1,36 +1,61 @@
 package com.danicaju.chat.client;
 
+import com.danicaju.chat.client.ui.ChannelManagerDialogs;
+import com.danicaju.chat.client.ui.ChatFeedPanel;
+import com.danicaju.chat.client.ui.ImageUtils;
+import com.danicaju.chat.client.ui.MessageCardPanel;
+import com.danicaju.chat.client.ui.ProfileDialogs;
+import com.danicaju.chat.client.ui.SearchDialog;
+import com.danicaju.chat.client.ui.SlashCommandPopup;
+import com.danicaju.chat.client.ui.ThreadSidePanel;
+import com.danicaju.chat.client.ui.VoiceAudioManager;
+import com.danicaju.chat.client.ui.WhiteboardDialog;
+import com.danicaju.chat.model.ChannelInfo;
+import com.danicaju.chat.model.EmbedData;
 import com.danicaju.chat.model.Message;
+import com.danicaju.chat.model.MessageType;
+import com.danicaju.chat.model.PollData;
+import com.danicaju.chat.model.PresenceStatus;
 import com.danicaju.chat.model.UserProfile;
+import com.danicaju.chat.model.WebhookInfo;
+import com.danicaju.chat.security.Permission;
+import com.danicaju.chat.service.SlashCommandHelper;
 import com.formdev.flatlaf.FlatClientProperties;
 import com.formdev.flatlaf.FlatDarkLaf;
 
+import javax.imageio.ImageIO;
+import javax.swing.AbstractAction;
 import javax.swing.BorderFactory;
+import javax.swing.Box;
+import javax.swing.BoxLayout;
 import javax.swing.DefaultListCellRenderer;
 import javax.swing.DefaultListModel;
 import javax.swing.ImageIcon;
 import javax.swing.JButton;
 import javax.swing.JComboBox;
 import javax.swing.JDialog;
+import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
-import javax.swing.JMenuItem;
 import javax.swing.JList;
+import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JPopupMenu;
+import javax.swing.JProgressBar;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
-import javax.swing.JTextPane;
+import javax.swing.KeyStroke;
 import javax.swing.ListSelectionModel;
-import javax.swing.SwingConstants;
 import javax.swing.SwingUtilities;
 import javax.swing.Timer;
 import javax.swing.border.EmptyBorder;
-import javax.swing.text.html.HTMLDocument;
-import javax.swing.text.html.HTMLEditorKit;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
+import javax.swing.filechooser.FileNameExtensionFilter;
+import java.awt.AWTEvent;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;
@@ -38,7 +63,6 @@ import java.awt.Cursor;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
-import java.awt.GradientPaint;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.GridBagConstraints;
@@ -47,94 +71,120 @@ import java.awt.Image;
 import java.awt.Insets;
 import java.awt.RenderingHints;
 import java.awt.Taskbar;
-import java.awt.event.KeyAdapter;
+import java.awt.Toolkit;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.Transferable;
+import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
-import java.time.Instant;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
+import java.awt.image.BufferedImage;
+import java.io.File;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Cliente gráfico de escritorio para RealTimeChat NextGen con Look & Feel FlatLaf Dark,
- * soporte para múltiples canales (#general, #ia-computacion, #random),
- * personalización integral de perfiles de usuario (avatar, bio, banner),
- * indicador de escritura en tiempo real (typing indicator),
- * búfer de reproducción de historial y asistente inteligente AI (@bot).
+ * Cliente gráfico estilo Discord para RealTimeChat NextGen.
+ * Integra Optimistic UI, Typing Throttling/Debounce, Threads, Presencia (Online/Idle/DND),
+ * Reacciones delta, Cursor Pagination + Virtualización, Bitfield Permissions, Markdown/Piston Run,
+ * Slash Commands (/poll), Webhooks, Búsqueda avanzada, Paste de imágenes, OpenGraph, Voz PCM y Pizarra + E2EE.
  */
 public class ChatGuiClient extends JFrame implements ChatEventListener {
 
-    private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss")
-            .withZone(ZoneId.systemDefault());
-
-    public static final String[] AVATAR_PRESETS = {
-            "cyber-neon", "synthwave", "cosmic", "emerald", "sunset", "bot-matrix", "retro-pixel", "golden"
-    };
-
-    public static final String[] BANNER_PRESETS = {
-            "#5865F2", "#57F287", "#EB459E", "#FEE75C", "#ED4245", "gradient-cyber", "gradient-sunset", "gradient-cosmic"
-    };
+    private static final long TYPING_DEBOUNCE_MS = 3000L;
+    private static final long IDLE_TIMEOUT_MS = 180_000L;
 
     private final ChatClientConnection connection;
-    private final DefaultListModel<String> userListModel;
-    private final DefaultListModel<String> channelListModel;
-    private JList<String> userList;
-    private JList<String> channelList;
-    private JTextPane chatPane;
-    private HTMLDocument htmlDoc;
-    private HTMLEditorKit editorKit;
-    private JTextField inputField;
-    private JButton sendButton;
-    private JLabel statusLabel;
-    private JLabel channelTitleLabel;
-    private JLabel userCountLabel;
-    private JLabel typingIndicatorLabel;
+    private final DefaultListModel<String> userListModel = new DefaultListModel<>();
+    private final DefaultListModel<String> channelListModel = new DefaultListModel<>();
+    private final DefaultListModel<String> webhookListModel = new DefaultListModel<>();
+    private final List<WebhookInfo> webhookCacheList = new ArrayList<>();
+
+    private final Map<String, UserProfile> profileCache = new ConcurrentHashMap<>();
+    private final Map<String, ChannelInfo> channelInfoMap = new ConcurrentHashMap<>();
+    private final Map<String, Long> typingExpiryMap = new ConcurrentHashMap<>();
+    private final Map<String, Double> voiceLevelsMap = new ConcurrentHashMap<>();
+    private final List<String> currentVoiceParticipants = Collections.synchronizedList(new ArrayList<>());
 
     private String currentServerHost = "127.0.0.1";
     private int currentServerPort = 5000;
     private String currentUsername = "";
-    private UserProfile myProfile;
+    private UserProfile myProfile = new UserProfile();
+    private PresenceStatus manualPresence = PresenceStatus.ONLINE;
+    private volatile boolean autoIdled = false;
+    private volatile long lastUserActivityMs = System.currentTimeMillis();
 
-    // Caché de perfiles consultados
-    private final Map<String, UserProfile> profileCache = new ConcurrentHashMap<>();
+    // Componentes principales
+    private JList<String> channelList;
+    private JList<String> userList;
+    private ChatFeedPanel chatFeedPanel;
+    private ThreadSidePanel threadSidePanel;
+    private SlashCommandPopup slashPopup;
+    private SearchDialog searchDialog;
+    private WhiteboardDialog whiteboardDialog;
+    private VoiceAudioManager voiceAudioManager;
 
-    // Manejo del estado de typing
-    private final Set<String> activeTypingUsers = Collections.newSetFromMap(new ConcurrentHashMap<>());
-    private Timer typingStopTimer;
-    private boolean isUserTyping = false;
+    private JLabel statusLabel;
+    private JLabel channelTitleLabel;
+    private JLabel channelTopicLabel;
+    private JLabel userCountLabel;
+    private JLabel typingIndicatorLabel;
+
+    // Dock usuario propio y voz
+    private JLabel dockAvatarLabel;
+    private JLabel dockNameLabel;
+    private JLabel dockStatusLabel;
+    private JPanel voiceDockPanel;
+    private JLabel voiceChannelStatusLbl;
+    private JProgressBar voiceMicBar;
+    private JButton muteVoiceBtn;
+    private JButton deafenVoiceBtn;
+
+    // Barra de entrada y banners contextuales (Reply / Paste Imagen)
+    private JTextArea inputArea;
+    private JButton sendButton;
+    private JButton createChanBtn;
+    private JButton deleteChanBtn;
+    private JButton permissionsBtn;
+    private JButton webhooksBtn;
+
+    private JPanel replyPreviewBar;
+    private JLabel replyPreviewLabel;
+    private Long pendingReplyToId;
+    private String pendingReplySender;
+    private String pendingReplyText;
+
+    private JPanel imagePasteBar;
+    private JLabel imagePasteThumb;
+    private JLabel imagePasteInfo;
+    private String pendingImageBase64;
+    private String pendingImageName;
 
     private JDialog activeDialog;
-    private JDialog currentProfileDialog;
-    private String currentProfileDialogUser;
-    private JLabel currentProfileAvatarLabel;
-    private ProfileBannerPanel currentProfileBannerPanel;
-    private JTextArea currentProfileBioArea;
 
     public ChatGuiClient() {
         super("RealTimeChat NextGen");
         this.connection = new ChatClientConnection();
-        this.userListModel = new DefaultListModel<>();
-        this.channelListModel = new DefaultListModel<>();
-        this.myProfile = new UserProfile();
+        this.voiceAudioManager = new VoiceAudioManager(connection, level -> SwingUtilities.invokeLater(() -> {
+            if (voiceMicBar != null) {
+                voiceMicBar.setValue((int) Math.round(level * 100));
+            }
+        }));
 
-        // Canales por defecto iniciales
         channelListModel.addElement("#general");
         channelListModel.addElement("#ia-computacion");
         channelListModel.addElement("#random");
+        channelListModel.addElement("#voz-general");
 
         initComponents();
         setupWindowEvents();
-        setupTypingDetection();
+        setupTypingAndIdleMonitors();
     }
 
     private void setupWindowIcons() {
@@ -155,8 +205,6 @@ public class ChatGuiClient extends JFrame implements ChatEventListener {
             }
             if (!iconList.isEmpty()) {
                 setIconImages(iconList);
-
-                // Soporte para icono en la barra de tareas de Windows 10/11 / macOS
                 if (Taskbar.isTaskbarSupported()) {
                     Taskbar taskbar = Taskbar.getTaskbar();
                     if (taskbar.isSupported(Taskbar.Feature.ICON_IMAGE)) {
@@ -165,7 +213,6 @@ public class ChatGuiClient extends JFrame implements ChatEventListener {
                 }
             }
         } catch (Exception ignored) {
-            // Ignorar si no hay entorno gráfico disponible
         }
     }
 
@@ -188,1115 +235,1471 @@ public class ChatGuiClient extends JFrame implements ChatEventListener {
     private void initComponents() {
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setupWindowIcons();
-        setSize(1080, 720);
-        setMinimumSize(new Dimension(800, 520));
+        setSize(1240, 780);
+        setMinimumSize(new Dimension(920, 580));
         setLocationRelativeTo(null);
 
         JPanel rootPanel = new JPanel(new BorderLayout());
-        rootPanel.setBorder(new EmptyBorder(0, 0, 0, 0));
+        rootPanel.setBackground(new Color(0x313338));
+        rootPanel.add(createHeaderPanel(), BorderLayout.NORTH);
 
-        // 1. Barra superior (Header)
-        JPanel headerPanel = createHeaderPanel();
-        rootPanel.add(headerPanel, BorderLayout.NORTH);
+        JPanel sidebar = createSidebarPanel();
 
-        // 2. Barra lateral izquierda (Canales y Usuarios en línea)
-        JPanel sidebarPanel = createSidebarPanel();
+        chatFeedPanel = new ChatFeedPanel();
+        chatFeedPanel.configure(
+                currentUsername,
+                getEffectiveMyChannelPerms(connection.getCurrentChannel()),
+                profileCache,
+                buildCardActions(),
+                oldestId -> {
+                    if (connection.isConnected()) {
+                        connection.requestOlderHistory(connection.getCurrentChannel(), oldestId, 30);
+                    }
+                }
+        );
 
-        // 3. Área central de mensajes
-        JPanel chatPanel = createChatPanel();
+        threadSidePanel = new ThreadSidePanel(() -> chatFeedPanel.revalidate());
+        threadSidePanel.configure(currentUsername, profileCache, (rootId, text) -> {
+            Message msg = Message.chat(connection.getCurrentChannel(), currentUsername, text);
+            msg.setThreadParentId(rootId);
+            connection.sendOptimisticOrQueue(msg);
+        });
 
-        // SplitPane divisor moderno entre sidebar y chat
-        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, sidebarPanel, chatPanel);
-        splitPane.setDividerLocation(250);
+        JPanel centerStack = new JPanel(new BorderLayout());
+        centerStack.add(chatFeedPanel, BorderLayout.CENTER);
+        centerStack.add(createBottomInputPanel(), BorderLayout.SOUTH);
+
+        JPanel mainArea = new JPanel(new BorderLayout());
+        mainArea.add(centerStack, BorderLayout.CENTER);
+        mainArea.add(threadSidePanel, BorderLayout.EAST);
+
+        JSplitPane splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, sidebar, mainArea);
+        splitPane.setDividerLocation(280);
         splitPane.setDividerSize(4);
         splitPane.setContinuousLayout(true);
         splitPane.setBorder(null);
+
         rootPanel.add(splitPane, BorderLayout.CENTER);
-
-        // 4. Barra inferior de envío con indicador de escritura
-        JPanel bottomPanel = createBottomInputPanel();
-        rootPanel.add(bottomPanel, BorderLayout.SOUTH);
-
         setContentPane(rootPanel);
+    }
+
+    private MessageCardPanel.CardActions buildCardActions() {
+        return new MessageCardPanel.CardActions() {
+            @Override
+            public void onReplyClicked(Message msg) {
+                pendingReplyToId = msg.getId();
+                pendingReplySender = msg.getSender();
+                String raw = msg.getContent() != null ? msg.getContent() : "";
+                pendingReplyText = raw.length() > 75 ? raw.substring(0, 72) + "..." : raw;
+                replyPreviewLabel.setText("Respondiendo a @" + pendingReplySender + ": " + pendingReplyText);
+                replyPreviewBar.setVisible(true);
+                inputArea.requestFocusInWindow();
+            }
+
+            @Override
+            public void onOpenThreadClicked(Message msg) {
+                if (msg.getId() == null) {
+                    JOptionPane.showMessageDialog(ChatGuiClient.this, "Espera a que el mensaje sea confirmado por el servidor.");
+                    return;
+                }
+                threadSidePanel.configure(currentUsername, profileCache, (rootId, text) -> {
+                    Message reply = Message.chat(connection.getCurrentChannel(), currentUsername, text);
+                    reply.setThreadParentId(rootId);
+                    connection.sendOptimisticOrQueue(reply);
+                });
+                threadSidePanel.openThread(msg);
+                connection.requestThreadHistory(connection.getCurrentChannel(), msg.getId());
+            }
+
+            @Override
+            public void onReactionToggle(Message msg, String emoji, boolean add) {
+                if (msg.getId() != null) {
+                    connection.sendReaction(msg.getId(), msg.getChannel(), emoji, add);
+                }
+            }
+
+            @Override
+            public void onDeleteClicked(Message msg) {
+                if (msg.getId() != null) {
+                    connection.deleteMessage(msg.getId(), msg.getChannel());
+                }
+            }
+
+            @Override
+            public void onRetryClicked(Message failedMsg) {
+                chatFeedPanel.removeCard(null, failedMsg.getTempId());
+                failedMsg.setTempId(null);
+                sendMessageWithOptimisticUi(failedMsg);
+            }
+
+            @Override
+            public void onDiscardErrorClicked(Message failedMsg) {
+                connection.cancelPendingMessage(failedMsg.getTempId());
+                chatFeedPanel.removeCard(failedMsg.getId(), failedMsg.getTempId());
+            }
+
+            @Override
+            public void onJumpToMessage(Long messageId) {
+                if (messageId != null && !chatFeedPanel.scrollToMessage(messageId)) {
+                    JOptionPane.showMessageDialog(ChatGuiClient.this,
+                            "El mensaje #" + messageId + " es anterior al búfer actual; desliza hacia arriba para cargarlo.",
+                            "Mensaje fuera de vista", JOptionPane.INFORMATION_MESSAGE);
+                }
+            }
+
+            @Override
+            public void onPollVote(Message msg, int optionIndex) {
+                if (msg.getId() != null) {
+                    connection.votePoll(msg.getChannel(), msg.getId(), optionIndex);
+                }
+            }
+
+            @Override
+            public void onUserClicked(String username) {
+                openProfileCard(username);
+            }
+        };
     }
 
     private JPanel createHeaderPanel() {
         JPanel header = new JPanel(new BorderLayout());
-        header.setBorder(new EmptyBorder(10, 16, 10, 16));
-        header.setBackground(new Color(30, 31, 35));
+        header.setBorder(new EmptyBorder(8, 14, 8, 14));
+        header.setBackground(new Color(0x1E1F22));
 
-        // Título de la app y canal activo
-        JPanel leftHeader = new JPanel(new FlowLayout(FlowLayout.LEFT, 12, 0));
-        leftHeader.setOpaque(false);
+        JPanel left = new JPanel(new FlowLayout(FlowLayout.LEFT, 10, 0));
+        left.setOpaque(false);
 
-        JLabel appTitle = new JLabel("RealTimeChat NextGen");
-        ImageIcon headerIcon = getAppImageIcon(28);
+        JLabel appTitle = new JLabel("RealTimeChat");
+        ImageIcon headerIcon = getAppImageIcon(26);
         if (headerIcon != null) {
             appTitle.setIcon(headerIcon);
-            appTitle.setIconTextGap(10);
+            appTitle.setIconTextGap(8);
         }
-        appTitle.setFont(new Font("Segoe UI", Font.BOLD, 16));
-        appTitle.setForeground(new Color(242, 243, 245));
+        appTitle.setFont(new Font("Segoe UI", Font.BOLD, 15));
+        appTitle.setForeground(new Color(0xF2F3F5));
 
         channelTitleLabel = new JLabel("#general");
         channelTitleLabel.setFont(new Font("Segoe UI", Font.BOLD, 14));
-        channelTitleLabel.setForeground(new Color(88, 101, 242));
-        channelTitleLabel.setBorder(BorderFactory.createMatteBorder(0, 1, 0, 0, new Color(78, 80, 88)));
-        channelTitleLabel.setBorder(new EmptyBorder(0, 10, 0, 0));
+        channelTitleLabel.setForeground(new Color(0x949CF7));
+        channelTitleLabel.setBorder(new EmptyBorder(0, 8, 0, 0));
 
-        leftHeader.add(appTitle);
-        leftHeader.add(channelTitleLabel);
+        channelTopicLabel = new JLabel("Canal principal de la comunidad");
+        channelTopicLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        channelTopicLabel.setForeground(new Color(0x949BA4));
 
-        // Panel derecho de acciones y estado
-        JPanel rightStatusPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
-        rightStatusPanel.setOpaque(false);
+        left.add(appTitle);
+        left.add(channelTitleLabel);
+        left.add(channelTopicLabel);
 
-        statusLabel = new JLabel("Desconectado", new StatusDotIcon(new Color(237, 66, 69)), JLabel.LEFT);
-        statusLabel.setIconTextGap(6);
-        statusLabel.setFont(new Font("Segoe UI", Font.BOLD, 13));
-        statusLabel.setForeground(new Color(237, 66, 69));
+        JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 6, 0));
+        right.setOpaque(false);
 
-        JButton profileBtn = new JButton("Mi Perfil");
-        profileBtn.putClientProperty(FlatClientProperties.BUTTON_TYPE, FlatClientProperties.BUTTON_TYPE_ROUND_RECT);
-        profileBtn.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        profileBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        profileBtn.addActionListener(e -> showProfileEditDialog());
+        statusLabel = new JLabel("Desconectado", new StatusDotIcon(new Color(0xF23F43)), JLabel.LEFT);
+        statusLabel.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        statusLabel.setForeground(new Color(0xF23F43));
 
-        JButton reconnectBtn = new JButton("Conectar / Cambiar");
-        reconnectBtn.putClientProperty(FlatClientProperties.BUTTON_TYPE, FlatClientProperties.BUTTON_TYPE_ROUND_RECT);
-        reconnectBtn.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        reconnectBtn.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        JButton searchBtn = makeHeaderBtn("Buscar");
+        searchBtn.addActionListener(e -> openSearchDialog(""));
+
+        JButton boardBtn = makeHeaderBtn("Pizarra");
+        boardBtn.addActionListener(e -> openWhiteboardDialog());
+
+        webhooksBtn = makeHeaderBtn("Webhooks");
+        webhooksBtn.addActionListener(e -> ChannelManagerDialogs.showWebhooksDialog(
+                this, connection, connection.getCurrentChannel(), webhookListModel, webhookCacheList
+        ));
+
+        permissionsBtn = makeHeaderBtn("Roles / Permisos");
+        permissionsBtn.addActionListener(e -> ChannelManagerDialogs.showPermissionsDialog(
+                this, connection, profileCache, new ArrayList<>(channelInfoMap.values()), null
+        ));
+
+        JButton reconnectBtn = makeHeaderBtn("Conectar");
         reconnectBtn.addActionListener(e -> showConnectionDialog());
 
-        rightStatusPanel.add(statusLabel);
-        rightStatusPanel.add(profileBtn);
-        rightStatusPanel.add(reconnectBtn);
+        right.add(statusLabel);
+        right.add(searchBtn);
+        right.add(boardBtn);
+        right.add(webhooksBtn);
+        right.add(permissionsBtn);
+        right.add(reconnectBtn);
 
-        header.add(leftHeader, BorderLayout.WEST);
-        header.add(rightStatusPanel, BorderLayout.EAST);
+        header.add(left, BorderLayout.WEST);
+        header.add(right, BorderLayout.EAST);
         return header;
     }
 
     private JPanel createSidebarPanel() {
-        JPanel sidebar = new JPanel(new BorderLayout());
-        sidebar.setBackground(new Color(43, 45, 49));
-        sidebar.setBorder(BorderFactory.createMatteBorder(0, 0, 0, 1, new Color(53, 55, 60)));
+        JPanel sidebar = new JPanel(new BorderLayout(0, 0));
+        sidebar.setBackground(new Color(0x2B2D31));
 
-        // Sección de Canales (Superior)
-        JPanel channelsSection = new JPanel(new BorderLayout());
-        channelsSection.setBackground(new Color(43, 45, 49));
+        // 1. Sección superior de Canales
+        JPanel channelsSection = new JPanel(new BorderLayout(0, 4));
+        channelsSection.setBackground(new Color(0x2B2D31));
+        channelsSection.setBorder(new EmptyBorder(10, 10, 8, 10));
 
-        JPanel channelHeader = new JPanel(new BorderLayout());
-        channelHeader.setBackground(new Color(43, 45, 49));
-        channelHeader.setBorder(new EmptyBorder(12, 14, 6, 14));
-        JLabel chanLabel = new JLabel("CANALES DE TEXTO");
-        chanLabel.setFont(new Font("Segoe UI", Font.BOLD, 11));
-        chanLabel.setForeground(new Color(148, 155, 164));
-        channelHeader.add(chanLabel, BorderLayout.WEST);
-        channelsSection.add(channelHeader, BorderLayout.NORTH);
+        JPanel chHeader = new JPanel(new BorderLayout());
+        chHeader.setOpaque(false);
+        JLabel channelsHdr = new JLabel("CANALES");
+        channelsHdr.setFont(new Font("Segoe UI", Font.BOLD, 11));
+        channelsHdr.setForeground(new Color(0x949BA4));
+
+        JPanel chActions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 3, 0));
+        chActions.setOpaque(false);
+        createChanBtn = new JButton("+");
+        createChanBtn.setToolTipText("Crear nuevo canal (requiere MANAGE_CHANNELS)");
+        styleTinySidebarBtn(createChanBtn);
+        createChanBtn.addActionListener(e -> ChannelManagerDialogs.showCreateChannelDialog(this, connection));
+
+        deleteChanBtn = new JButton("-");
+        deleteChanBtn.setToolTipText("Eliminar un canal (requiere MANAGE_CHANNELS)");
+        styleTinySidebarBtn(deleteChanBtn);
+        deleteChanBtn.addActionListener(e -> {
+            List<String> list = new ArrayList<>();
+            for (int i = 0; i < channelListModel.size(); i++) list.add(channelListModel.get(i));
+            ChannelManagerDialogs.showDeleteChannelDialog(this, connection, list);
+        });
+        chActions.add(createChanBtn);
+        chActions.add(deleteChanBtn);
+        chHeader.add(channelsHdr, BorderLayout.WEST);
+        chHeader.add(chActions, BorderLayout.EAST);
 
         channelList = new JList<>(channelListModel);
         channelList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        channelList.setBackground(new Color(43, 45, 49));
-        channelList.setSelectedValue("#general", true);
-        channelList.setCellRenderer(new ChannelListCellRenderer());
-        channelList.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        channelList.addListSelectionListener(e -> {
-            if (!e.getValueIsAdjusting()) {
+        channelList.setBackground(new Color(0x2B2D31));
+        channelList.setForeground(new Color(0xDBDEE1));
+        channelList.setFixedCellHeight(30);
+        channelList.setSelectedIndex(0);
+        channelList.setCellRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+                JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+                String name = value != null ? value.toString() : "";
+                ChannelInfo info = channelInfoMap.get(name.toLowerCase());
+                boolean isVoice = (info != null && ChannelInfo.TYPE_VOICE.equalsIgnoreCase(info.getType()))
+                        || name.startsWith("#voz");
+                label.setBorder(new EmptyBorder(4, 8, 4, 8));
+                label.setFont(new Font("Segoe UI", isSelected ? Font.BOLD : Font.PLAIN, 13));
+                label.setText(isVoice ? "[VOZ] " + name : name);
+                if (isSelected) {
+                    label.setBackground(new Color(0x404249));
+                    label.setForeground(Color.WHITE);
+                } else {
+                    label.setBackground(new Color(0x2B2D31));
+                    label.setForeground(isVoice ? new Color(0x57F287) : new Color(0x949BA4));
+                }
+                return label;
+            }
+        });
+        channelList.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
                 String selected = channelList.getSelectedValue();
-                if (selected != null && !selected.equalsIgnoreCase(connection.getCurrentChannel())) {
-                    switchChannel(selected);
+                if (selected == null || !connection.isConnected()) return;
+                if (!selected.equalsIgnoreCase(connection.getCurrentChannel())) {
+                    connection.switchChannel(selected);
+                }
+                ChannelInfo info = channelInfoMap.get(selected.toLowerCase());
+                boolean isVoice = (info != null && ChannelInfo.TYPE_VOICE.equalsIgnoreCase(info.getType()))
+                        || selected.startsWith("#voz");
+                if (isVoice && e.getClickCount() == 2) {
+                    toggleJoinVoiceChannel(selected);
                 }
             }
         });
 
-        JScrollPane chanScroll = new JScrollPane(channelList);
-        chanScroll.setBorder(null);
-        chanScroll.setPreferredSize(new Dimension(240, 140));
-        channelsSection.add(chanScroll, BorderLayout.CENTER);
+        JScrollPane chScroll = new JScrollPane(channelList);
+        chScroll.setBorder(null);
+        chScroll.setPreferredSize(new Dimension(250, 155));
+        channelsSection.add(chHeader, BorderLayout.NORTH);
+        channelsSection.add(chScroll, BorderLayout.CENTER);
 
-        // Sección de Usuarios (Inferior)
-        JPanel usersSection = new JPanel(new BorderLayout());
-        usersSection.setBackground(new Color(43, 45, 49));
-        usersSection.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, new Color(53, 55, 60)));
+        // 2. Sección central de Miembros en Canal (con Avatar Custom + Estado de Presencia + Rol)
+        JPanel usersSection = new JPanel(new BorderLayout(0, 4));
+        usersSection.setBackground(new Color(0x2B2D31));
+        usersSection.setBorder(new EmptyBorder(6, 10, 6, 10));
 
-        JPanel userHeader = new JPanel(new BorderLayout());
-        userHeader.setBackground(new Color(43, 45, 49));
-        userHeader.setBorder(new EmptyBorder(10, 14, 6, 14));
-        userCountLabel = new JLabel("EN ESTE CANAL (0)");
+        userCountLabel = new JLabel("MIEMBROS (0)");
         userCountLabel.setFont(new Font("Segoe UI", Font.BOLD, 11));
-        userCountLabel.setForeground(new Color(148, 155, 164));
-        userHeader.add(userCountLabel, BorderLayout.WEST);
-        usersSection.add(userHeader, BorderLayout.NORTH);
+        userCountLabel.setForeground(new Color(0x949BA4));
+        userCountLabel.setBorder(new EmptyBorder(0, 2, 4, 0));
 
         userList = new JList<>(userListModel);
         userList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-        userList.setBackground(new Color(43, 45, 49));
-        userList.setCellRenderer(new UserListCellRenderer());
-        userList.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-
-        // Doble clic o menú contextual para ver perfil o enviar privado
+        userList.setBackground(new Color(0x2B2D31));
+        userList.setForeground(new Color(0xDBDEE1));
+        userList.setFixedCellHeight(38);
+        userList.setCellRenderer(new MemberListRenderer());
         userList.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                int index = userList.locationToIndex(e.getPoint());
-                if (index < 0) return;
-                String selected = userListModel.getElementAt(index);
-
-                if (e.getClickCount() == 2) {
-                    showUserProfilePopup(selected);
-                } else if (SwingUtilities.isRightMouseButton(e)) {
-                    userList.setSelectedIndex(index);
+                String selected = userList.getSelectedValue();
+                if (selected == null) return;
+                if (SwingUtilities.isRightMouseButton(e)) {
                     showUserContextMenu(e.getComponent(), e.getX(), e.getY(), selected);
+                } else if (e.getClickCount() == 2) {
+                    openProfileCard(selected);
                 }
             }
         });
 
         JScrollPane userScroll = new JScrollPane(userList);
         userScroll.setBorder(null);
+        usersSection.add(userCountLabel, BorderLayout.NORTH);
         usersSection.add(userScroll, BorderLayout.CENTER);
+
+        // 3. Dock inferior de Voz + Perfil Propio estilo Discord (#232428)
+        JPanel southDock = new JPanel();
+        southDock.setLayout(new BoxLayout(southDock, BoxLayout.Y_AXIS));
+        southDock.setBackground(new Color(0x232428));
+
+        voiceDockPanel = createVoiceDockPanel();
+        southDock.add(voiceDockPanel);
+        southDock.add(createUserDockPanel());
 
         sidebar.add(channelsSection, BorderLayout.NORTH);
         sidebar.add(usersSection, BorderLayout.CENTER);
-
+        sidebar.add(southDock, BorderLayout.SOUTH);
         return sidebar;
     }
 
-    private JPanel createChatPanel() {
-        JPanel chatPanel = new JPanel(new BorderLayout());
-        chatPanel.setBackground(new Color(49, 51, 56));
+    private JPanel createVoiceDockPanel() {
+        JPanel p = new JPanel();
+        p.setLayout(new BoxLayout(p, BoxLayout.Y_AXIS));
+        p.setBackground(new Color(0x1E2923));
+        p.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createMatteBorder(1, 0, 1, 0, new Color(0x23A55A)),
+                BorderFactory.createEmptyBorder(6, 10, 6, 10)
+        ));
+        p.setVisible(false);
 
-        chatPane = new JTextPane();
-        chatPane.setEditable(false);
-        chatPane.setContentType("text/html");
-        chatPane.setBackground(new Color(49, 51, 56));
+        voiceChannelStatusLbl = new JLabel("Voz Conectada");
+        voiceChannelStatusLbl.setForeground(new Color(0x57F287));
+        voiceChannelStatusLbl.setFont(new Font("Segoe UI", Font.BOLD, 12));
 
-        editorKit = new HTMLEditorKit();
-        chatPane.setEditorKit(editorKit);
-        htmlDoc = (HTMLDocument) editorKit.createDefaultDocument();
-        chatPane.setDocument(htmlDoc);
+        voiceMicBar = new JProgressBar(0, 100);
+        voiceMicBar.setPreferredSize(new Dimension(220, 6));
+        voiceMicBar.setForeground(new Color(0x57F287));
+        voiceMicBar.setBackground(new Color(0x1E1F22));
 
-        chatPane.addHyperlinkListener(e -> {
-            if (e.getEventType() == javax.swing.event.HyperlinkEvent.EventType.ACTIVATED) {
-                String desc = e.getDescription();
-                if (desc != null && desc.startsWith("user:")) {
-                    String targetUser = desc.substring(5).trim();
-                    showUserProfilePopup(targetUser);
-                }
+        JPanel btns = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 4));
+        btns.setOpaque(false);
+        muteVoiceBtn = makeHeaderBtn("Mute");
+        muteVoiceBtn.addActionListener(e -> {
+            voiceAudioManager.setMuted(!voiceAudioManager.isMuted());
+            muteVoiceBtn.setText(voiceAudioManager.isMuted() ? "Unmute" : "Mute");
+            muteVoiceBtn.setBackground(voiceAudioManager.isMuted() ? new Color(0xF23F43) : new Color(0x3F4147));
+        });
+        deafenVoiceBtn = makeHeaderBtn("Deaf");
+        deafenVoiceBtn.addActionListener(e -> {
+            voiceAudioManager.setDeafened(!voiceAudioManager.isDeafened());
+            deafenVoiceBtn.setText(voiceAudioManager.isDeafened() ? "Undeaf" : "Deaf");
+            deafenVoiceBtn.setBackground(voiceAudioManager.isDeafened() ? new Color(0xF23F43) : new Color(0x3F4147));
+        });
+        JButton leaveVoiceBtn = makeHeaderBtn("Colgar");
+        leaveVoiceBtn.setBackground(new Color(0xF23F43));
+        leaveVoiceBtn.addActionListener(e -> {
+            voiceAudioManager.leaveVoice();
+            voiceDockPanel.setVisible(false);
+        });
+        btns.add(muteVoiceBtn);
+        btns.add(deafenVoiceBtn);
+        btns.add(leaveVoiceBtn);
+
+        p.add(voiceChannelStatusLbl);
+        p.add(Box.createVerticalStrut(4));
+        p.add(voiceMicBar);
+        p.add(btns);
+        return p;
+    }
+
+    private JPanel createUserDockPanel() {
+        JPanel dock = new JPanel(new BorderLayout(8, 0));
+        dock.setBackground(new Color(0x232428));
+        dock.setBorder(new EmptyBorder(8, 10, 8, 10));
+
+        dockAvatarLabel = new JLabel(ImageUtils.buildAvatarIcon("?", "cyber-neon", null, 34, new Color(0x23A55A)));
+        dockAvatarLabel.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        dockAvatarLabel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                openSelfProfileEditor();
             }
         });
 
-        resetChatHtmlDocument();
+        JPanel info = new JPanel();
+        info.setOpaque(false);
+        info.setLayout(new BoxLayout(info, BoxLayout.Y_AXIS));
+        dockNameLabel = new JLabel("Sin sesión");
+        dockNameLabel.setFont(new Font("Segoe UI", Font.BOLD, 13));
+        dockNameLabel.setForeground(Color.WHITE);
+        dockStatusLabel = new JLabel("En línea");
+        dockStatusLabel.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+        dockStatusLabel.setForeground(new Color(0x949BA4));
+        info.add(dockNameLabel);
+        info.add(dockStatusLabel);
 
-        JScrollPane scrollPane = new JScrollPane(chatPane);
-        scrollPane.setBorder(null);
-        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
-        chatPanel.add(scrollPane, BorderLayout.CENTER);
+        JButton editBtn = makeHeaderBtn("Perfil");
+        editBtn.addActionListener(e -> openSelfProfileEditor());
 
-        return chatPanel;
-    }
+        JButton statusBtn = makeHeaderBtn("Estado");
+        statusBtn.addActionListener(e -> showPresenceMenu(statusBtn));
 
-    private void resetChatHtmlDocument() {
-        String baseCss = "<style>" +
-                "body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; font-size: 13px; color: #dbdee1; margin: 10px; background-color: #313338; }" +
-                ".msg-row { margin-bottom: 8px; line-height: 1.4; }" +
-                ".timestamp { color: #949ba4; font-size: 11px; margin-right: 6px; font-weight: normal; }" +
-                ".sender-other { color: #5865f2; font-weight: bold; font-size: 13px; }" +
-                ".sender-me { color: #57f287; font-weight: bold; font-size: 13px; }" +
-                ".sender-bot { color: #eb459e; font-weight: bold; font-size: 13px; }" +
-                ".bot-badge { background-color: #5865f2; color: #ffffff; font-size: 10px; padding: 1px 4px; font-weight: bold; border-radius: 3px; margin-left: 4px; }" +
-                ".system-msg { color: #f0b232; font-style: italic; background-color: #383424; padding: 4px 8px; }" +
-                ".private-msg { color: #eb459e; background-color: #382434; padding: 6px 10px; border-left: 3px solid #eb459e; }" +
-                ".history-divider { color: #949ba4; font-size: 11px; text-align: center; border-bottom: 1px dashed #4e5058; margin: 12px 0; padding-bottom: 4px; }" +
-                ".body-text { color: #dbdee1; word-wrap: break-word; }" +
-                "</style><div id='chat-flow'></div>";
-        try {
-            htmlDoc = (HTMLDocument) editorKit.createDefaultDocument();
-            chatPane.setDocument(htmlDoc);
-            editorKit.insertHTML(htmlDoc, 0, baseCss, 0, 0, null);
-        } catch (Exception ignored) {
-        }
+        JPanel btns = new JPanel(new FlowLayout(FlowLayout.RIGHT, 3, 0));
+        btns.setOpaque(false);
+        btns.add(statusBtn);
+        btns.add(editBtn);
+
+        dock.add(dockAvatarLabel, BorderLayout.WEST);
+        dock.add(info, BorderLayout.CENTER);
+        dock.add(btns, BorderLayout.EAST);
+        return dock;
     }
 
     private JPanel createBottomInputPanel() {
-        JPanel container = new JPanel(new BorderLayout());
-        container.setBackground(new Color(43, 45, 49));
+        JPanel bottom = new JPanel(new BorderLayout(0, 4));
+        bottom.setBorder(new EmptyBorder(4, 14, 12, 14));
+        bottom.setBackground(new Color(0x313338));
 
-        // Indicador de escritura en tiempo real (Typing indicator)
+        // 1. Indicador de escritura
         typingIndicatorLabel = new JLabel(" ");
-        typingIndicatorLabel.setFont(new Font("Segoe UI", Font.ITALIC, 11));
-        typingIndicatorLabel.setForeground(new Color(181, 186, 193));
-        typingIndicatorLabel.setBorder(new EmptyBorder(4, 18, 2, 18));
-        container.add(typingIndicatorLabel, BorderLayout.NORTH);
+        typingIndicatorLabel.setFont(new Font("Segoe UI", Font.ITALIC, 12));
+        typingIndicatorLabel.setForeground(new Color(0x949BA4));
 
-        // Barra inferior de envío
-        JPanel bottomPanel = new JPanel(new BorderLayout(8, 0));
-        bottomPanel.setBorder(new EmptyBorder(4, 16, 12, 16));
-        bottomPanel.setOpaque(false);
+        // 2. Barra de respuesta inline (Reply preview)
+        replyPreviewBar = new JPanel(new BorderLayout(8, 0));
+        replyPreviewBar.setBackground(new Color(0x2B2D31));
+        replyPreviewBar.setBorder(new EmptyBorder(5, 10, 5, 10));
+        replyPreviewBar.setVisible(false);
+        replyPreviewLabel = new JLabel();
+        replyPreviewLabel.setForeground(new Color(0xC9CDFB));
+        replyPreviewLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
+        JButton cancelReply = makeHeaderBtn("X");
+        cancelReply.addActionListener(e -> clearPendingReply());
+        replyPreviewBar.add(replyPreviewLabel, BorderLayout.CENTER);
+        replyPreviewBar.add(cancelReply, BorderLayout.EAST);
 
-        inputField = new JTextField();
-        inputField.setFont(new Font("Segoe UI", Font.PLAIN, 14));
-        inputField.putClientProperty(FlatClientProperties.PLACEHOLDER_TEXT, "Enviar mensaje a " + connection.getCurrentChannel() + " (prueba @bot resume, /w usuario)...");
-        inputField.putClientProperty(FlatClientProperties.STYLE, "arc: 12; margin: 6,10,6,10;");
-        inputField.addKeyListener(new KeyAdapter() {
+        // 3. Barra de previsualización de Imagen pegada (Ctrl+V o archivo)
+        imagePasteBar = new JPanel(new BorderLayout(8, 0));
+        imagePasteBar.setBackground(new Color(0x2B2D31));
+        imagePasteBar.setBorder(new EmptyBorder(6, 10, 6, 10));
+        imagePasteBar.setVisible(false);
+        imagePasteThumb = new JLabel();
+        imagePasteInfo = new JLabel();
+        imagePasteInfo.setForeground(new Color(0x57F287));
+        JButton clearImgBtn = makeHeaderBtn("Quitar imagen");
+        clearImgBtn.addActionListener(e -> clearPendingImage());
+        imagePasteBar.add(imagePasteThumb, BorderLayout.WEST);
+        imagePasteBar.add(imagePasteInfo, BorderLayout.CENTER);
+        imagePasteBar.add(clearImgBtn, BorderLayout.EAST);
+
+        JPanel barsStack = new JPanel();
+        barsStack.setOpaque(false);
+        barsStack.setLayout(new BoxLayout(barsStack, BoxLayout.Y_AXIS));
+        barsStack.add(typingIndicatorLabel);
+        barsStack.add(replyPreviewBar);
+        barsStack.add(imagePasteBar);
+
+        // 4. Input compuesto multilinea + Ctrl+V imágenes + / autocompletado
+        JPanel inputRow = new JPanel(new BorderLayout(8, 0));
+        inputRow.setBackground(new Color(0x383A40));
+        inputRow.setBorder(BorderFactory.createEmptyBorder(6, 10, 6, 8));
+
+        inputArea = new JTextArea(2, 40);
+        inputArea.setLineWrap(true);
+        inputArea.setWrapStyleWord(true);
+        inputArea.setFont(new Font("Segoe UI", Font.PLAIN, 14));
+        inputArea.setBackground(new Color(0x383A40));
+        inputArea.setForeground(new Color(0xDBDEE1));
+        inputArea.setCaretColor(Color.WHITE);
+        inputArea.setEnabled(false);
+
+        slashPopup = new SlashCommandPopup();
+        inputArea.getDocument().addDocumentListener(new DocumentListener() {
+            @Override public void insertUpdate(DocumentEvent e) { onInputChanged(); }
+            @Override public void removeUpdate(DocumentEvent e) { onInputChanged(); }
+            @Override public void changedUpdate(DocumentEvent e) { onInputChanged(); }
+        });
+
+        // Enter envía, Shift+Enter inserta salto de línea (ideal para bloques de código Markdown!)
+        inputArea.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "send-message");
+        inputArea.getActionMap().put("send-message", new AbstractAction() {
             @Override
-            public void keyPressed(KeyEvent e) {
-                if (e.getKeyCode() == KeyEvent.VK_ENTER) {
-                    sendMessageFromInput();
+            public void actionPerformed(ActionEvent e) {
+                if (slashPopup.isVisible()) {
+                    slashPopup.setVisible(false);
+                }
+                sendCurrentInput();
+            }
+        });
+        inputArea.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, KeyEvent.SHIFT_DOWN_MASK), "insert-newline");
+        inputArea.getActionMap().put("insert-newline", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                inputArea.replaceSelection("\n");
+            }
+        });
+        // Ctrl+V interceptor de imágenes del portapapeles
+        inputArea.getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_V, KeyEvent.CTRL_DOWN_MASK), "paste-smart");
+        inputArea.getActionMap().put("paste-smart", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                if (!tryHandleClipboardImagePaste()) {
+                    inputArea.paste();
                 }
             }
         });
+
+        JScrollPane inputScroll = new JScrollPane(inputArea);
+        inputScroll.setBorder(null);
+        inputScroll.setPreferredSize(new Dimension(400, 48));
+
+        JButton attachBtn = makeHeaderBtn("+Img");
+        attachBtn.setToolTipText("Adjuntar imagen desde archivo (o pega con Ctrl+V)");
+        attachBtn.addActionListener(e -> chooseAttachmentImage());
+
+        JButton voiceToggleBtn = makeHeaderBtn("Voz");
+        voiceToggleBtn.setToolTipText("Unirse/Salir del canal de voz actual");
+        voiceToggleBtn.addActionListener(e -> toggleJoinVoiceChannel(connection.getCurrentChannel()));
 
         sendButton = new JButton("Enviar");
         sendButton.setFont(new Font("Segoe UI", Font.BOLD, 13));
-        sendButton.putClientProperty(FlatClientProperties.BUTTON_TYPE, FlatClientProperties.BUTTON_TYPE_ROUND_RECT);
-        sendButton.putClientProperty(FlatClientProperties.STYLE, "background: #5865f2; foreground: #ffffff; arc: 12;");
-        sendButton.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        sendButton.setPreferredSize(new Dimension(85, 36));
-        sendButton.addActionListener(e -> sendMessageFromInput());
+        sendButton.setBackground(new Color(0x5865F2));
+        sendButton.setForeground(Color.WHITE);
+        sendButton.setEnabled(false);
+        sendButton.addActionListener(e -> sendCurrentInput());
 
-        bottomPanel.add(inputField, BorderLayout.CENTER);
-        bottomPanel.add(sendButton, BorderLayout.EAST);
-        container.add(bottomPanel, BorderLayout.CENTER);
+        JPanel rightBtns = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 2));
+        rightBtns.setOpaque(false);
+        rightBtns.add(attachBtn);
+        rightBtns.add(voiceToggleBtn);
+        rightBtns.add(sendButton);
 
-        return container;
+        inputRow.add(inputScroll, BorderLayout.CENTER);
+        inputRow.add(rightBtns, BorderLayout.EAST);
+
+        bottom.add(barsStack, BorderLayout.NORTH);
+        bottom.add(inputRow, BorderLayout.CENTER);
+        return bottom;
     }
 
-    private void setupTypingDetection() {
-        typingStopTimer = new Timer(2500, e -> {
-            if (isUserTyping) {
-                isUserTyping = false;
-                connection.sendTyping(false);
-            }
-        });
-        typingStopTimer.setRepeats(false);
+    private void onInputChanged() {
+        lastUserActivityMs = System.currentTimeMillis();
+        String text = inputArea.getText();
+        slashPopup.updateForInput(inputArea, text);
+        if (connection.isConnected() && !text.isBlank()) {
+            connection.notifyUserTypingThrottled();
+        }
+    }
 
-        inputField.addKeyListener(new KeyAdapter() {
-            @Override
-            public void keyTyped(KeyEvent e) {
-                if (e.getKeyChar() != KeyEvent.VK_ENTER && connection.isConnected()) {
-                    if (!isUserTyping) {
-                        isUserTyping = true;
-                        connection.sendTyping(true);
-                    }
-                    typingStopTimer.restart();
+    private boolean tryHandleClipboardImagePaste() {
+        try {
+            Transferable t = Toolkit.getDefaultToolkit().getSystemClipboard().getContents(null);
+            if (t != null && t.isDataFlavorSupported(DataFlavor.imageFlavor)) {
+                Image pasted = (Image) t.getTransferData(DataFlavor.imageFlavor);
+                stageAttachedImage(pasted, "captura-portapapeles.jpg");
+                return true;
+            }
+        } catch (Exception ignored) {
+        }
+        return false;
+    }
+
+    private void chooseAttachmentImage() {
+        JFileChooser fc = new JFileChooser();
+        fc.setFileFilter(new FileNameExtensionFilter("Imágenes (PNG, JPG, GIF, BMP)", "png", "jpg", "jpeg", "gif", "bmp"));
+        if (fc.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            File f = fc.getSelectedFile();
+            try {
+                BufferedImage img = ImageIO.read(f);
+                if (img != null) {
+                    stageAttachedImage(img, f.getName());
                 }
+            } catch (Exception ex) {
+                JOptionPane.showMessageDialog(this, "No se pudo leer la imagen: " + ex.getMessage());
+            }
+        }
+    }
+
+    private void stageAttachedImage(Image raw, String name) {
+        BufferedImage compressed = ImageUtils.scaleToMaxDimensions(raw, 1024, 1024);
+        if (compressed == null) return;
+        String base64 = ImageUtils.encodeCompressedJpegBase64(compressed, 0.80f);
+        if (base64 == null) return;
+
+        pendingImageBase64 = base64;
+        pendingImageName = name;
+        BufferedImage thumb = ImageUtils.scaleToMaxDimensions(compressed, 64, 48);
+        imagePasteThumb.setIcon(thumb != null ? new ImageIcon(thumb) : null);
+        imagePasteInfo.setText("Imagen lista (" + compressed.getWidth() + "x" + compressed.getHeight() + " px, " + (base64.length() * 3 / 4096) + " KB): " + name);
+        imagePasteBar.setVisible(true);
+    }
+
+    private void clearPendingImage() {
+        pendingImageBase64 = null;
+        pendingImageName = null;
+        imagePasteBar.setVisible(false);
+    }
+
+    private void clearPendingReply() {
+        pendingReplyToId = null;
+        pendingReplySender = null;
+        pendingReplyText = null;
+        replyPreviewBar.setVisible(false);
+    }
+
+    // =========================================================================
+    // ENVÍO OPTIMISTA, COMANDOS SLASH Y DMs E2EE
+    // =========================================================================
+
+    private void sendCurrentInput() {
+        lastUserActivityMs = System.currentTimeMillis();
+        String text = inputArea.getText().trim();
+        if (text.isEmpty() && pendingImageBase64 == null) return;
+
+        inputArea.setText("");
+        if (connection.isConnected()) {
+            connection.sendTyping(false);
+        }
+
+        // Comandos Slash locales o ricos
+        if (text.startsWith("/")) {
+            if (handleSlashCommand(text)) {
+                clearPendingReply();
+                clearPendingImage();
+                return;
+            }
+        }
+
+        Message msg = Message.chat(connection.getCurrentChannel(), currentUsername, text);
+        msg.setReplyToId(pendingReplyToId);
+        msg.setReplySender(pendingReplySender);
+        msg.setReplyPreview(pendingReplyText);
+        if (pendingImageBase64 != null) {
+            msg.setAttachmentName(pendingImageName);
+            msg.setAttachmentBase64(pendingImageBase64);
+        }
+
+        clearPendingReply();
+        clearPendingImage();
+        sendMessageWithOptimisticUi(msg);
+    }
+
+    private void sendMessageWithOptimisticUi(Message msg) {
+        String tempId = connection.sendOptimisticOrQueue(msg);
+        msg.setTempId(tempId);
+        chatFeedPanel.appendMessage(msg, MessageCardPanel.DeliveryState.SENDING, true);
+        if (!connection.isConnected()) {
+            updateConnectionBannerOffline();
+        }
+    }
+
+    private boolean handleSlashCommand(String input) {
+        String lower = input.toLowerCase();
+        if (lower.equals("/clear")) {
+            chatFeedPanel.clearFeed();
+            return true;
+        }
+        if (lower.startsWith("/poll")) {
+            PollData poll = SlashCommandHelper.parsePoll(input);
+            if (poll == null) {
+                JOptionPane.showMessageDialog(this, "Uso: /poll ¿Pregunta? | Opción 1 | Opción 2", "Formato de Encuesta", JOptionPane.INFORMATION_MESSAGE);
+                return true;
+            }
+            Message msg = Message.chat(connection.getCurrentChannel(), currentUsername, "[ENCUESTA] " + poll.getQuestion());
+            msg.setPoll(poll);
+            sendMessageWithOptimisticUi(msg);
+            return true;
+        }
+        if (lower.startsWith("/roll")) {
+            String result = SlashCommandHelper.evaluateRoll(input, currentUsername);
+            sendMessageWithOptimisticUi(Message.chat(connection.getCurrentChannel(), currentUsername, result));
+            return true;
+        }
+        if (lower.startsWith("/shrug")) {
+            sendMessageWithOptimisticUi(Message.chat(connection.getCurrentChannel(), currentUsername, SlashCommandHelper.evaluateShrug(input)));
+            return true;
+        }
+        if (lower.startsWith("/join ")) {
+            connection.switchChannel(input.substring(6).trim());
+            return true;
+        }
+        if (lower.startsWith("/createchannel ")) {
+            String[] p = input.substring(15).trim().split("\\s+", 3);
+            String name = p[0].startsWith("#") ? p[0] : "#" + p[0];
+            String type = (p.length > 1 && "VOICE".equalsIgnoreCase(p[1])) ? ChannelInfo.TYPE_VOICE : ChannelInfo.TYPE_TEXT;
+            String topic = p.length > 2 ? p[2] : "Canal creado desde comando";
+            connection.createChannel(new ChannelInfo(name, type, topic, currentUsername));
+            return true;
+        }
+        if (lower.startsWith("/deletechannel ")) {
+            connection.deleteChannel(input.substring(15).trim());
+            return true;
+        }
+        if (lower.startsWith("/search")) {
+            String q = input.length() > 7 ? input.substring(7).trim() : "";
+            openSearchDialog(q);
+            if (!q.isEmpty()) connection.searchMessages(q);
+            return true;
+        }
+        if (lower.startsWith("/status ")) {
+            String[] p = input.substring(8).trim().split("\\s+", 2);
+            PresenceStatus st = PresenceStatus.fromString(p[0]);
+            manualPresence = st;
+            String custom = p.length > 1 ? p[1] : null;
+            myProfile.setPresence(st);
+            myProfile.setCustomStatus(custom);
+            connection.updatePresence(st, custom, myProfile.getStatusSymbol());
+            updateOwnDock();
+            return true;
+        }
+        if (lower.equals("/whiteboard")) {
+            openWhiteboardDialog();
+            return true;
+        }
+        if (lower.startsWith("/bio ")) {
+            myProfile.setBio(input.substring(5).trim());
+            connection.updateProfile(myProfile);
+            return true;
+        }
+        if (lower.startsWith("/w ") || lower.startsWith("/msg ")) {
+            String[] parts = input.split("\\s+", 3);
+            if (parts.length >= 3) {
+                sendDirectMessageAutoE2ee(parts[1], parts[2]);
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private void sendDirectMessageAutoE2ee(String target, String plaintext) {
+        if (connection.hasPeerPublicKey(target)) {
+            if (connection.sendEncryptedPrivateMessage(target, plaintext)) {
+                return;
+            }
+        }
+        connection.sendPrivateMessage(target, plaintext);
+    }
+
+    // =========================================================================
+    // VENTANAS Y DIALOGOS AUXILIARES
+    // =========================================================================
+
+    private void openSelfProfileEditor() {
+        if (!connection.isConnected()) return;
+        ProfileDialogs.showEditProfileDialog(this, myProfile, updated -> {
+            this.myProfile = updated;
+            this.manualPresence = updated.getPresence();
+            profileCache.put(currentUsername.toLowerCase(), updated);
+            connection.updateProfile(updated);
+            connection.updatePresence(updated.getPresence(), updated.getCustomStatus(), updated.getStatusSymbol());
+            updateOwnDock();
+            chatFeedPanel.refreshAvatarsForUser(updated);
+            userList.repaint();
+        });
+    }
+
+    private void openProfileCard(String username) {
+        if (username == null || username.isBlank()) return;
+        UserProfile prof = profileCache.getOrDefault(username.toLowerCase(), new UserProfile(username));
+        if (connection.isConnected()) {
+            connection.requestProfile(username);
+        }
+        boolean isSelf = currentUsername.equalsIgnoreCase(username);
+        boolean canManageRoles = Permission.hasPermission(myProfile.getPermissions(), Permission.MANAGE_ROLES);
+        ProfileDialogs.showUserProfileCard(
+                this,
+                prof,
+                isSelf,
+                canManageRoles,
+                connection,
+                this::openSelfProfileEditor,
+                () -> promptDirectMessageTo(username),
+                () -> ChannelManagerDialogs.showPermissionsDialog(
+                        this, connection, profileCache, new ArrayList<>(channelInfoMap.values()), username
+                )
+        );
+    }
+
+    private void promptDirectMessageTo(String target) {
+        boolean isE2ee = connection.hasPeerPublicKey(target);
+        String msg = JOptionPane.showInputDialog(
+                this,
+                (isE2ee ? "[E2EE AES-256-GCM Activado] " : "") + "Mensaje privado para @" + target + ":",
+                "Mensaje Directo",
+                JOptionPane.PLAIN_MESSAGE
+        );
+        if (msg != null && !msg.trim().isEmpty()) {
+            sendDirectMessageAutoE2ee(target, msg.trim());
+        }
+    }
+
+    private void showPresenceMenu(Component anchor) {
+        JPopupMenu m = new JPopupMenu();
+        for (PresenceStatus st : new PresenceStatus[]{PresenceStatus.ONLINE, PresenceStatus.IDLE, PresenceStatus.DND}) {
+            JMenuItem item = new JMenuItem(st.getLabel());
+            item.addActionListener(e -> {
+                manualPresence = st;
+                autoIdled = false;
+                myProfile.setPresence(st);
+                connection.updatePresence(st, myProfile.getCustomStatus(), myProfile.getStatusSymbol());
+                updateOwnDock();
+            });
+            m.add(item);
+        }
+        m.show(anchor, 0, -90);
+    }
+
+    private void showUserContextMenu(Component invoker, int x, int y, String target) {
+        JPopupMenu menu = new JPopupMenu();
+        JMenuItem viewItem = new JMenuItem("Ver Perfil y Biografía");
+        viewItem.addActionListener(e -> openProfileCard(target));
+        menu.add(viewItem);
+
+        if (!target.equalsIgnoreCase(currentUsername)) {
+            JMenuItem dmItem = new JMenuItem("Enviar DM (E2EE)");
+            dmItem.addActionListener(e -> promptDirectMessageTo(target));
+            menu.add(dmItem);
+        }
+        if (Permission.hasPermission(myProfile.getPermissions(), Permission.MANAGE_ROLES)) {
+            JMenuItem roleItem = new JMenuItem("Gestionar Rol / Permisos");
+            roleItem.addActionListener(e -> ChannelManagerDialogs.showPermissionsDialog(
+                    this, connection, profileCache, new ArrayList<>(channelInfoMap.values()), target
+            ));
+            menu.add(roleItem);
+        }
+        menu.show(invoker, x, y);
+    }
+
+    private void openSearchDialog(String initialQuery) {
+        if (searchDialog == null) {
+            searchDialog = new SearchDialog(this, connection, matched -> {
+                if (matched.getChannel() != null && !matched.getChannel().equalsIgnoreCase(connection.getCurrentChannel())) {
+                    connection.switchChannel(matched.getChannel());
+                }
+                if (matched.getId() != null) {
+                    SwingUtilities.invokeLater(() -> chatFeedPanel.scrollToMessage(matched.getId()));
+                }
+            });
+        }
+        searchDialog.setInitialQuery(initialQuery);
+        searchDialog.setVisible(true);
+    }
+
+    private void openWhiteboardDialog() {
+        if (whiteboardDialog == null) {
+            whiteboardDialog = new WhiteboardDialog(this, connection, connection.getCurrentChannel());
+        } else {
+            whiteboardDialog.setActiveChannel(connection.getCurrentChannel());
+        }
+        whiteboardDialog.setVisible(true);
+    }
+
+    private void toggleJoinVoiceChannel(String channel) {
+        if (voiceAudioManager.isActive() && channel.equalsIgnoreCase(voiceAudioManager.getActiveVoiceChannel())) {
+            voiceAudioManager.leaveVoice();
+            voiceDockPanel.setVisible(false);
+        } else {
+            boolean hw = voiceAudioManager.joinVoice(channel);
+            voiceChannelStatusLbl.setText((hw ? "Voz: " : "Voz (solo escucha): ") + channel);
+            voiceDockPanel.setVisible(true);
+        }
+    }
+
+    // =========================================================================
+    // MONITORES: TYPING DEBOUNCE (3s) & AUTO-IDLE DETECTOR
+    // =========================================================================
+
+    private void setupTypingAndIdleMonitors() {
+        Toolkit.getDefaultToolkit().addAWTEventListener(
+                event -> {
+                    lastUserActivityMs = System.currentTimeMillis();
+                    if (autoIdled && connection.isConnected() && manualPresence == PresenceStatus.ONLINE) {
+                        autoIdled = false;
+                        myProfile.setPresence(PresenceStatus.ONLINE);
+                        connection.updatePresence(PresenceStatus.ONLINE, myProfile.getCustomStatus(), myProfile.getStatusSymbol());
+                        SwingUtilities.invokeLater(this::updateOwnDock);
+                    }
+                },
+                AWTEvent.KEY_EVENT_MASK | AWTEvent.MOUSE_EVENT_MASK
+        );
+
+        Timer maintenanceTimer = new Timer(800, e -> {
+            long now = System.currentTimeMillis();
+            boolean changed = typingExpiryMap.entrySet().removeIf(entry -> entry.getValue() <= now);
+            if (changed) {
+                refreshTypingIndicator();
+            }
+
+            if (connection.isConnected() && manualPresence == PresenceStatus.ONLINE && !autoIdled
+                    && (now - lastUserActivityMs >= IDLE_TIMEOUT_MS)) {
+                autoIdled = true;
+                myProfile.setPresence(PresenceStatus.IDLE);
+                connection.updatePresence(PresenceStatus.IDLE, myProfile.getCustomStatus(), myProfile.getStatusSymbol());
+                updateOwnDock();
             }
         });
+        maintenanceTimer.start();
     }
 
     private void setupWindowEvents() {
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
-                if (connection.isConnected()) {
-                    connection.disconnect();
-                }
+                voiceAudioManager.leaveVoice();
+                connection.disconnect();
             }
         });
     }
 
-    private void switchChannel(String channelName) {
-        if (!connection.isConnected()) {
-            channelTitleLabel.setText(channelName);
-            channelList.setSelectedValue(channelName, true);
-            inputField.putClientProperty(FlatClientProperties.PLACEHOLDER_TEXT, "Enviar mensaje a " + channelName + "...");
-            return;
-        }
-
-        boolean isDifferent = !channelName.equalsIgnoreCase(connection.getCurrentChannel());
-        connection.switchChannel(channelName);
-        channelTitleLabel.setText(channelName);
-        channelList.setSelectedValue(channelName, true);
-        inputField.putClientProperty(FlatClientProperties.PLACEHOLDER_TEXT, "Enviar mensaje a " + channelName + "...");
-        if (isDifferent) {
-            resetChatHtmlDocument();
-            appendSystemHtml("Cambiando al canal " + channelName + "...");
-        }
-    }
-
-    private void sendMessageFromInput() {
-        String text = inputField.getText().trim();
-        if (text.isEmpty()) {
-            return;
-        }
-
-        // Cancelar typing local
-        if (isUserTyping) {
-            isUserTyping = false;
-            typingStopTimer.stop();
-            connection.sendTyping(false);
-        }
-
-        if (!connection.isConnected()) {
-            appendSystemHtml("No estás conectado. Pulsa 'Conectar / Cambiar' para iniciar sesión.");
-            return;
-        }
-
-        if (text.equalsIgnoreCase("/help") || text.equalsIgnoreCase("/ayuda")) {
-            appendSystemHtml("Comandos disponibles: /w &lt;usuario&gt; &lt;mensaje&gt;, /join &lt;#canal&gt;, /channels, /list, /help, /quit. Puedes invocar al asistente con @bot.");
-            inputField.setText("");
-            return;
-        }
-
-        if (text.startsWith("/join ") || text.startsWith("/canal ")) {
-            String[] parts = text.split("\\s+", 2);
-            if (parts.length >= 2) {
-                switchChannel(parts[1].trim());
-            }
-            inputField.setText("");
-            return;
-        }
-
-        if (text.startsWith("/w ") || text.startsWith("/msg ")) {
-            String[] parts = text.split("\\s+", 3);
-            if (parts.length >= 3) {
-                connection.sendPrivateMessage(parts[1], parts[2]);
-                inputField.setText("");
-            } else {
-                appendSystemHtml("Uso: /w &lt;usuario&gt; &lt;mensaje&gt;");
-            }
-            return;
-        }
-
-        if (text.equalsIgnoreCase("/list") || text.equalsIgnoreCase("/usuarios")) {
-            connection.requestUserList();
-            inputField.setText("");
-            return;
-        }
-
-        if (text.equalsIgnoreCase("/channels") || text.equalsIgnoreCase("/canales")) {
-            connection.requestChannelList();
-            inputField.setText("");
-            return;
-        }
-
-        if (text.equalsIgnoreCase("/quit") || text.equalsIgnoreCase("/salir")) {
-            connection.disconnect();
-            inputField.setText("");
-            return;
-        }
-
-        connection.sendChatMessage(text);
-        inputField.setText("");
-    }
-
-    private void showUserContextMenu(Component comp, int x, int y, String targetUser) {
-        JPopupMenu menu = new JPopupMenu();
-        JMenuItem viewProfileItem = new JMenuItem("Ver Perfil");
-        viewProfileItem.addActionListener(e -> showUserProfilePopup(targetUser));
-
-        JMenuItem sendPrivateItem = new JMenuItem("Enviar Mensaje Privado");
-        sendPrivateItem.addActionListener(e -> {
-            inputField.setText("/w " + targetUser + " ");
-            inputField.requestFocusInWindow();
-        });
-
-        menu.add(viewProfileItem);
-        menu.add(sendPrivateItem);
-        menu.show(comp, x, y);
-    }
-
-    /**
-     * Muestra la tarjeta de perfil emergente de un usuario con actualización reactiva en tiempo real.
-     */
-    public void showUserProfilePopup(String targetUsername) {
-        if (targetUsername == null || targetUsername.trim().isEmpty()) {
-            return;
-        }
-        String cleanUser = targetUsername.trim();
-
-        // Solicitar siempre al servidor los datos más recientes del perfil
-        if (connection.isConnected()) {
-            connection.requestProfile(cleanUser);
-        }
-
-        UserProfile cached = profileCache.get(cleanUser);
-        if (cached == null) {
-            cached = new UserProfile(cleanUser);
-        }
-
-        JDialog dialog = new JDialog(this, "Perfil de @" + cleanUser, false);
-        this.currentProfileDialog = dialog;
-        this.currentProfileDialogUser = cleanUser;
-        dialog.setSize(380, 320);
-        dialog.setLocationRelativeTo(this);
-        dialog.setResizable(false);
-        dialog.addWindowListener(new WindowAdapter() {
-            @Override
-            public void windowClosed(WindowEvent e) {
-                if (currentProfileDialog == dialog) {
-                    currentProfileDialog = null;
-                    currentProfileDialogUser = null;
-                    currentProfileAvatarLabel = null;
-                    currentProfileBannerPanel = null;
-                    currentProfileBioArea = null;
-                }
-            }
-        });
-
-        JPanel content = new JPanel(new BorderLayout());
-        content.setBackground(new Color(49, 51, 56));
-
-        // Banner superior
-        ProfileBannerPanel bannerPanel = new ProfileBannerPanel(cached.getBanner());
-        bannerPanel.setPreferredSize(new Dimension(380, 80));
-        this.currentProfileBannerPanel = bannerPanel;
-
-        // Tarjeta central con avatar y bio
-        JPanel bodyPanel = new JPanel();
-        bodyPanel.setLayout(new FlowLayout(FlowLayout.CENTER, 10, 10));
-        bodyPanel.setBackground(new Color(49, 51, 56));
-
-        JLabel avatarLabel = new JLabel(new AvatarPresetIcon(cached.getAvatar(), 54));
-        this.currentProfileAvatarLabel = avatarLabel;
-        JLabel nameLabel = new JLabel("@" + cleanUser, SwingConstants.CENTER);
-        nameLabel.setFont(new Font("Segoe UI", Font.BOLD, 18));
-        nameLabel.setForeground(Color.WHITE);
-
-        JTextArea bioArea = new JTextArea(cached.getBio());
-        this.currentProfileBioArea = bioArea;
-        bioArea.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        bioArea.setForeground(new Color(219, 222, 225));
-        bioArea.setBackground(new Color(43, 45, 49));
-        bioArea.setLineWrap(true);
-        bioArea.setWrapStyleWord(true);
-        bioArea.setEditable(false);
-        bioArea.setBorder(new EmptyBorder(8, 10, 8, 10));
-        bioArea.setPreferredSize(new Dimension(340, 70));
-
-        JButton sendMsgBtn = new JButton("Enviar Mensaje Privado");
-        sendMsgBtn.putClientProperty(FlatClientProperties.BUTTON_TYPE, FlatClientProperties.BUTTON_TYPE_ROUND_RECT);
-        sendMsgBtn.putClientProperty(FlatClientProperties.STYLE, "background: #5865f2; foreground: #ffffff;");
-        sendMsgBtn.addActionListener(e -> {
-            dialog.dispose();
-            inputField.setText("/w " + cleanUser + " ");
-            inputField.requestFocusInWindow();
-        });
-
-        bodyPanel.add(avatarLabel);
-        bodyPanel.add(nameLabel);
-        bodyPanel.add(bioArea);
-        bodyPanel.add(sendMsgBtn);
-
-        content.add(bannerPanel, BorderLayout.NORTH);
-        content.add(bodyPanel, BorderLayout.CENTER);
-
-        dialog.setContentPane(content);
-        dialog.setVisible(true);
-    }
-
-    /**
-     * Muestra el diálogo modal para editar la biografía, avatar y banner propios.
-     */
-    public void showProfileEditDialog() {
-        JDialog dialog = new JDialog(this, "Personalizar Mi Perfil", true);
-        dialog.setSize(440, 420);
-        dialog.setLocationRelativeTo(this);
-        dialog.setResizable(false);
-
-        JPanel panel = new JPanel(new GridBagLayout());
-        panel.setBorder(new EmptyBorder(16, 20, 16, 20));
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.insets = new Insets(6, 4, 6, 4);
-
-        JComboBox<String> avatarCombo = new JComboBox<>(AVATAR_PRESETS);
-        avatarCombo.setEditable(true);
-        avatarCombo.setSelectedItem(myProfile.getAvatar());
-
-        JComboBox<String> bannerCombo = new JComboBox<>(BANNER_PRESETS);
-        bannerCombo.setEditable(true);
-        bannerCombo.setSelectedItem(myProfile.getBanner());
-
-        JTextArea bioField = new JTextArea(myProfile.getBio(), 4, 20);
-        bioField.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-        bioField.setLineWrap(true);
-        bioField.setWrapStyleWord(true);
-        JScrollPane bioScroll = new JScrollPane(bioField);
-
-        gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0.3;
-        panel.add(new JLabel("Avatar Preset:"), gbc);
-        gbc.gridx = 1; gbc.gridy = 0; gbc.weightx = 0.7;
-        panel.add(avatarCombo, gbc);
-
-        gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0.3;
-        panel.add(new JLabel("Banner (#hex / preset):"), gbc);
-        gbc.gridx = 1; gbc.gridy = 1; gbc.weightx = 0.7;
-        panel.add(bannerCombo, gbc);
-
-        gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 0.3;
-        panel.add(new JLabel("Biografía:"), gbc);
-        gbc.gridx = 1; gbc.gridy = 2; gbc.weightx = 0.7;
-        panel.add(bioScroll, gbc);
-
-        // Vista previa en vivo
-        JPanel previewContainer = new JPanel(new BorderLayout());
-        previewContainer.setBorder(BorderFactory.createTitledBorder("Vista Previa"));
-        ProfileBannerPanel previewBanner = new ProfileBannerPanel((String) bannerCombo.getSelectedItem());
-        previewBanner.setPreferredSize(new Dimension(380, 50));
-        JLabel previewAvatar = new JLabel(new AvatarPresetIcon((String) avatarCombo.getSelectedItem(), 36));
-        previewContainer.add(previewBanner, BorderLayout.NORTH);
-        previewContainer.add(previewAvatar, BorderLayout.WEST);
-
-        java.awt.event.ActionListener previewUpdater = e -> {
-            String av = (avatarCombo.getSelectedItem() != null) ? avatarCombo.getSelectedItem().toString().trim() : "cyber-neon";
-            String bn = (bannerCombo.getSelectedItem() != null) ? bannerCombo.getSelectedItem().toString().trim() : "#5865F2";
-            previewAvatar.setIcon(new AvatarPresetIcon(av, 36));
-            previewAvatar.repaint();
-            previewBanner.setBannerStyle(bn);
-            previewBanner.repaint();
-        };
-        avatarCombo.addActionListener(previewUpdater);
-        bannerCombo.addActionListener(previewUpdater);
-
-        gbc.gridx = 0; gbc.gridy = 3; gbc.gridwidth = 2;
-        panel.add(previewContainer, gbc);
-
-        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
-        JButton cancelBtn = new JButton("Cancelar");
-        JButton saveBtn = new JButton("Guardar Perfil");
-        saveBtn.putClientProperty(FlatClientProperties.STYLE, "background: #5865f2; foreground: #ffffff;");
-
-        cancelBtn.addActionListener(e -> dialog.dispose());
-        saveBtn.addActionListener(e -> {
-            String av = (avatarCombo.getSelectedItem() != null) ? avatarCombo.getSelectedItem().toString().trim() : "cyber-neon";
-            String bn = (bannerCombo.getSelectedItem() != null) ? bannerCombo.getSelectedItem().toString().trim() : "#5865F2";
-            myProfile.setAvatar(av);
-            myProfile.setBanner(bn);
-            myProfile.setBio(bioField.getText());
-            myProfile.setUsername(currentUsername);
-
-            if (connection.isConnected()) {
-                connection.updateProfile(myProfile);
-                appendSystemHtml("¡Perfil actualizado con éxito!");
-            }
-            dialog.dispose();
-        });
-
-        btnPanel.add(cancelBtn);
-        btnPanel.add(saveBtn);
-
-        gbc.gridx = 0; gbc.gridy = 4; gbc.gridwidth = 2;
-        panel.add(btnPanel, gbc);
-
-        dialog.setContentPane(panel);
-        dialog.setVisible(true);
-    }
-
-    /**
-     * Muestra el diálogo modal para configurar IP, puerto y nickname.
-     */
-    public void showConnectionDialog() {
-        JDialog dialog = new JDialog(this, "Conexión a RealTimeChat NextGen", true);
-        this.activeDialog = dialog;
-        if (!getIconImages().isEmpty()) {
-            dialog.setIconImages(getIconImages());
-        }
-        dialog.setSize(410, 355);
-        dialog.setLocationRelativeTo(this);
-        dialog.setResizable(false);
-        dialog.addWindowListener(new WindowAdapter() {
-            @Override
-            public void windowClosed(WindowEvent e) {
-                if (activeDialog == dialog) {
-                    activeDialog = null;
-                }
-            }
-        });
-
-        JPanel wrapper = new JPanel(new BorderLayout());
-
-        // Cabecera visual con el icono de la app
-        JPanel brandHeader = new JPanel(new FlowLayout(FlowLayout.LEFT, 14, 12));
-        brandHeader.setBackground(new Color(30, 31, 35));
-        brandHeader.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(53, 55, 60)),
-                new EmptyBorder(4, 10, 4, 10)
-        ));
-        ImageIcon dlgIcon = getAppImageIcon(48);
-        if (dlgIcon != null) {
-            brandHeader.add(new JLabel(dlgIcon));
-        }
-        JPanel brandText = new JPanel(new GridBagLayout());
-        brandText.setOpaque(false);
-        GridBagConstraints bgbc = new GridBagConstraints();
-        bgbc.anchor = GridBagConstraints.WEST;
-        bgbc.gridx = 0; bgbc.gridy = 0;
-        JLabel titleLbl = new JLabel("RealTimeChat NextGen");
-        titleLbl.setFont(new Font("Segoe UI", Font.BOLD, 17));
-        titleLbl.setForeground(new Color(242, 243, 245));
-        brandText.add(titleLbl, bgbc);
-        bgbc.gridy = 1;
-        JLabel subLbl = new JLabel("Canales en tiempo real · Perfiles · Bot IA");
-        subLbl.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-        subLbl.setForeground(new Color(148, 155, 164));
-        brandText.add(subLbl, bgbc);
-        brandHeader.add(brandText);
-        wrapper.add(brandHeader, BorderLayout.NORTH);
-
-        JPanel panel = new JPanel(new GridBagLayout());
-        panel.setBorder(new EmptyBorder(16, 24, 16, 24));
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.insets = new Insets(6, 4, 6, 4);
-
-        JTextField hostField = new JTextField(currentServerHost);
-        JTextField portField = new JTextField(String.valueOf(currentServerPort));
-        JTextField userField = new JTextField(currentUsername.isEmpty() ? "User" + (int) (Math.random() * 900 + 100) : currentUsername);
-        JLabel errorLabel = new JLabel(" ");
-        errorLabel.setForeground(new Color(237, 66, 69));
-        errorLabel.setFont(new Font("Segoe UI", Font.PLAIN, 12));
-
-        gbc.gridx = 0; gbc.gridy = 0; gbc.weightx = 0.3;
-        panel.add(new JLabel("Servidor IP:"), gbc);
-        gbc.gridx = 1; gbc.gridy = 0; gbc.weightx = 0.7;
-        panel.add(hostField, gbc);
-
-        gbc.gridx = 0; gbc.gridy = 1; gbc.weightx = 0.3;
-        panel.add(new JLabel("Puerto:"), gbc);
-        gbc.gridx = 1; gbc.gridy = 1; gbc.weightx = 0.7;
-        panel.add(portField, gbc);
-
-        gbc.gridx = 0; gbc.gridy = 2; gbc.weightx = 0.3;
-        panel.add(new JLabel("Nickname:"), gbc);
-        gbc.gridx = 1; gbc.gridy = 2; gbc.weightx = 0.7;
-        panel.add(userField, gbc);
-
-        gbc.gridx = 0; gbc.gridy = 3; gbc.gridwidth = 2;
-        panel.add(errorLabel, gbc);
-
-        JPanel btnPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 0));
-        JButton cancelBtn = new JButton("Cancelar");
-        JButton connectBtn = new JButton("Conectar");
-        connectBtn.putClientProperty(FlatClientProperties.STYLE, "background: #5865f2; foreground: #ffffff;");
-
-        cancelBtn.addActionListener(e -> dialog.dispose());
-        connectBtn.addActionListener(e -> {
-            String host = hostField.getText().trim();
-            String portStr = portField.getText().trim();
-            String user = userField.getText().trim();
-
-            if (host.isEmpty() || portStr.isEmpty() || user.isEmpty()) {
-                errorLabel.setText("Todos los campos son obligatorios.");
-                return;
-            }
-
-            int port;
-            try {
-                port = Integer.parseInt(portStr);
-            } catch (NumberFormatException ex) {
-                errorLabel.setText("El puerto debe ser numérico.");
-                return;
-            }
-
-            errorLabel.setText("Conectando...");
-            connectBtn.setEnabled(false);
-
-            new Thread(() -> {
-                boolean ok = connection.connect(host, port, user, this);
-                SwingUtilities.invokeLater(() -> {
-                    connectBtn.setEnabled(true);
-                    if (ok) {
-                        currentServerHost = host;
-                        currentServerPort = port;
-                        currentUsername = user;
-                        myProfile.setUsername(user);
-                        dialog.dispose();
-                    } else {
-                        errorLabel.setText("No se pudo conectar. Revisa nickname o servidor.");
-                    }
-                });
-            }).start();
-        });
-
-        gbc.gridx = 0; gbc.gridy = 4; gbc.gridwidth = 2;
-        panel.add(btnPanel, gbc);
-        btnPanel.add(cancelBtn);
-        btnPanel.add(connectBtn);
-
-        wrapper.add(panel, BorderLayout.CENTER);
-        dialog.setContentPane(wrapper);
-        dialog.getRootPane().setDefaultButton(connectBtn);
-        dialog.setVisible(true);
-    }
-
-    private void appendHtml(String htmlSnippet) {
-        SwingUtilities.invokeLater(() -> {
-            try {
-                editorKit.insertHTML(htmlDoc, htmlDoc.getLength(), htmlSnippet, 0, 0, null);
-                chatPane.setCaretPosition(htmlDoc.getLength());
-            } catch (Exception e) {
-                System.err.println("Error insertando HTML: " + e.getMessage());
-            }
-        });
-    }
-
-    private void appendSystemHtml(String text) {
-        String time = TIME_FORMATTER.format(Instant.now());
-        String html = "<div class='msg-row'><span class='timestamp'>[" + time + "]</span> " +
-                "<span class='system-msg'>[SISTEMA] " + escapeHtml(text) + "</span></div>";
-        appendHtml(html);
-    }
-
-    private String escapeHtml(String input) {
-        if (input == null) return "";
-        return input.replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace("\"", "&quot;")
-                .replace("\n", "<br/>");
-    }
-
-    // --- Implementación de ChatEventListener ---
+    // =========================================================================
+    // CALLBACKS REACTIVOS (ChatEventListener)
+    // =========================================================================
 
     @Override
     public void onConnected(String username) {
         SwingUtilities.invokeLater(() -> {
             this.currentUsername = username;
             this.myProfile.setUsername(username);
-            statusLabel.setText("En línea: @" + username);
-            statusLabel.setIcon(new StatusDotIcon(new Color(87, 242, 135)));
-            statusLabel.setForeground(new Color(87, 242, 135));
-            appendSystemHtml("¡Conexión establecida como @" + username + "! Canal: " + connection.getCurrentChannel());
-            inputField.requestFocusInWindow();
+            this.connection.setAutoReconnect(true);
+
+            setTitle("RealTimeChat - @" + username);
+            statusLabel.setText("Conectado @" + username);
+            statusLabel.setIcon(new StatusDotIcon(new Color(0x23A55A)));
+            statusLabel.setForeground(new Color(0x23A55A));
+
+            inputArea.setEnabled(true);
+            sendButton.setEnabled(true);
+            inputArea.requestFocusInWindow();
+
+            updateOwnDock();
+            refreshPermissionControlledUi();
         });
     }
 
     @Override
     public void onMessageReceived(Message message) {
-        if (message == null || message.getType() == null) {
-            return;
+        SwingUtilities.invokeLater(() -> {
+            if (message == null || message.getType() == null) return;
+
+            // Limpiar indicador de escritura inmediatamente al llegar mensaje del remitente
+            if (message.getSender() != null) {
+                if (typingExpiryMap.remove(message.getSender().toLowerCase()) != null) {
+                    refreshTypingIndicator();
+                }
+            }
+
+            if (message.getThreadParentId() != null) {
+                chatFeedPanel.incrementThreadCount(message.getThreadParentId());
+                if (threadSidePanel.getRootMessageId() != null
+                        && threadSidePanel.getRootMessageId().equals(message.getThreadParentId())) {
+                    threadSidePanel.appendReply(message);
+                }
+                return;
+            }
+
+            chatFeedPanel.appendMessage(message, MessageCardPanel.DeliveryState.SENT, false);
+
+            // Notificación sonora respetando estado DND (No molestar)
+            boolean isExternal = message.getSender() != null && !message.getSender().equalsIgnoreCase(currentUsername);
+            boolean isDmOrMention = message.getType() == MessageType.PRIVATE
+                    || (message.getContent() != null && message.getContent().contains("@" + currentUsername));
+            if (isExternal && isDmOrMention && myProfile.getPresence() != PresenceStatus.DND && !isFocused()) {
+                Toolkit.getDefaultToolkit().beep();
+            }
+        });
+    }
+
+    @Override
+    public void onMessageAck(String tempId, Long id, String channel, long timestamp) {
+        SwingUtilities.invokeLater(() -> chatFeedPanel.handleAck(tempId, id, timestamp));
+    }
+
+    @Override
+    public void onMessageSendError(String tempId, Message failedMessage, String error) {
+        SwingUtilities.invokeLater(() -> chatFeedPanel.handleSendError(tempId, error));
+    }
+
+    @Override
+    public void onMessageDeleted(Long messageId, String channel, String deletedBy) {
+        SwingUtilities.invokeLater(() -> chatFeedPanel.removeCard(messageId, null));
+    }
+
+    @Override
+    public void onReactionUpdated(Long messageId, String channel, String sender, String emoji, boolean added, Map<String, List<String>> reactions) {
+        SwingUtilities.invokeLater(() -> chatFeedPanel.updateReactions(messageId, reactions));
+    }
+
+    @Override
+    public void onMessageEmbedUpdated(Long messageId, String channel, EmbedData embed) {
+        SwingUtilities.invokeLater(() -> chatFeedPanel.updateEmbed(messageId, embed));
+    }
+
+    @Override
+    public void onPollUpdated(Long messageId, String channel, PollData poll) {
+        SwingUtilities.invokeLater(() -> chatFeedPanel.updatePoll(messageId, poll));
+    }
+
+    @Override
+    public void onHistoryReceived(String channel, List<Message> history) {
+        SwingUtilities.invokeLater(() -> {
+            chatFeedPanel.configure(
+                    currentUsername,
+                    getEffectiveMyChannelPerms(channel),
+                    profileCache,
+                    buildCardActions(),
+                    oldestId -> {
+                        if (connection.isConnected()) {
+                            connection.requestOlderHistory(connection.getCurrentChannel(), oldestId, 30);
+                        }
+                    }
+            );
+            chatFeedPanel.setInitialHistory(history);
+        });
+    }
+
+    @Override
+    public void onHistoryPageReceived(String channel, List<Message> history, boolean hasMore, Long beforeId, Long afterId, Long threadParentId) {
+        SwingUtilities.invokeLater(() -> {
+            if (threadParentId != null) {
+                if (threadParentId.equals(threadSidePanel.getRootMessageId())) {
+                    threadSidePanel.setReplies(history);
+                }
+                return;
+            }
+            if (afterId != null) {
+                if (history != null) {
+                    for (Message m : history) {
+                        chatFeedPanel.appendMessage(m, MessageCardPanel.DeliveryState.SENT, true);
+                    }
+                }
+            } else {
+                chatFeedPanel.prependOlderHistory(history, hasMore);
+            }
+        });
+    }
+
+    @Override
+    public void onUserProfilesUpdated(Map<String, UserProfile> profiles) {
+        if (profiles == null) return;
+        for (Map.Entry<String, UserProfile> e : profiles.entrySet()) {
+            if (e.getValue() != null) {
+                profileCache.put(e.getKey().toLowerCase(), e.getValue());
+                if (e.getKey().equalsIgnoreCase(currentUsername)) {
+                    myProfile = e.getValue();
+                }
+            }
         }
+        SwingUtilities.invokeLater(() -> {
+            updateOwnDock();
+            refreshPermissionControlledUi();
+            userList.repaint();
+        });
+    }
 
-        String time = TIME_FORMATTER.format(Instant.ofEpochMilli(message.getTimestamp()));
-        switch (message.getType()) {
-            case CHAT -> {
-                String sender = message.getSender();
-                boolean isMe = currentUsername != null && currentUsername.equalsIgnoreCase(sender);
-                boolean isBot = "RealTimeBot".equalsIgnoreCase(sender);
+    @Override
+    public void onProfileReceived(UserProfile profile) {
+        if (profile == null || profile.getUsername() == null) return;
+        profileCache.put(profile.getUsername().toLowerCase(), profile);
+        SwingUtilities.invokeLater(() -> {
+            if (profile.getUsername().equalsIgnoreCase(currentUsername)) {
+                myProfile = profile;
+                updateOwnDock();
+                refreshPermissionControlledUi();
+            }
+            chatFeedPanel.refreshAvatarsForUser(profile);
+            userList.repaint();
+        });
+    }
 
-                String senderClass = isMe ? "sender-me" : (isBot ? "sender-bot" : "sender-other");
-                String displayName = isMe ? "Tú" : escapeHtml(sender);
-                String botBadge = isBot ? "<span class='bot-badge'>BOT AI</span>" : "";
-                String userLink = isBot ? ("@" + displayName) : ("<a href='user:" + escapeHtml(sender) + "' style='text-decoration:none;' class='" + senderClass + "'>@" + displayName + "</a>");
-
-                String html = "<div class='msg-row'><span class='timestamp'>[" + time + "]</span> " +
-                        "<span class='" + senderClass + "'>" + userLink + botBadge + ":</span> " +
-                        "<span class='body-text'>" + escapeHtml(message.getContent()) + "</span></div>";
-                appendHtml(html);
+    @Override
+    public void onPresenceUpdated(String username, PresenceStatus status, String customStatus, String statusSymbol) {
+        if (username == null) return;
+        UserProfile p = profileCache.computeIfAbsent(username.toLowerCase(), k -> new UserProfile(username));
+        p.setPresence(status != null ? status : PresenceStatus.ONLINE);
+        p.setCustomStatus(customStatus);
+        p.setStatusSymbol(statusSymbol);
+        SwingUtilities.invokeLater(() -> {
+            if (username.equalsIgnoreCase(currentUsername)) {
+                updateOwnDock();
             }
-            case PRIVATE -> {
-                String sender = message.getSender();
-                String target = message.getTarget();
-                boolean isMe = currentUsername != null && currentUsername.equalsIgnoreCase(sender);
-                String label = isMe ? "[PRIVADO PARA @" + escapeHtml(target) + "]" : "[PRIVADO DE @" + escapeHtml(sender) + "]";
-                String html = "<div class='msg-row'><div class='private-msg'><span class='timestamp'>[" + time + "]</span> " +
-                        "<b>" + label + ":</b> " +
-                        "<span class='body-text'>" + escapeHtml(message.getContent()) + "</span></div></div>";
-                appendHtml(html);
-            }
-            case SYSTEM -> {
-                appendSystemHtml(message.getContent());
-            }
-            case LEAVE -> {
-                appendSystemHtml("El usuario @" + message.getSender() + " se ha desconectado.");
-            }
-            default -> {
-            }
-        }
+            userList.repaint();
+        });
     }
 
     @Override
     public void onUserListUpdated(List<String> users) {
         SwingUtilities.invokeLater(() -> {
             userListModel.clear();
-            for (String u : users) {
-                userListModel.addElement(u);
+            if (users != null) {
+                users.forEach(userListModel::addElement);
+                userCountLabel.setText("MIEMBROS EN CANAL (" + users.size() + ")");
             }
-            userCountLabel.setText("EN ESTE CANAL (" + users.size() + ")");
         });
     }
 
     @Override
     public void onChannelListUpdated(List<String> channels) {
         SwingUtilities.invokeLater(() -> {
+            String active = connection.getCurrentChannel();
             channelListModel.clear();
-            for (String c : channels) {
-                channelListModel.addElement(c);
+            if (channels != null) {
+                channels.forEach(channelListModel::addElement);
             }
+            int idx = channelListModel.indexOf(active);
+            if (idx >= 0) channelList.setSelectedIndex(idx);
+        });
+    }
+
+    @Override
+    public void onChannelMetadataUpdated(List<ChannelInfo> channels) {
+        if (channels == null) return;
+        channelInfoMap.clear();
+        for (ChannelInfo info : channels) {
+            channelInfoMap.put(info.getName().toLowerCase(), info);
+        }
+        SwingUtilities.invokeLater(() -> {
+            updateHeaderChannelInfo(connection.getCurrentChannel());
+            refreshPermissionControlledUi();
+            channelList.repaint();
         });
     }
 
     @Override
     public void onChannelChanged(String newChannel) {
         SwingUtilities.invokeLater(() -> {
-            channelTitleLabel.setText(newChannel);
-            channelList.setSelectedValue(newChannel, true);
-            inputField.putClientProperty(FlatClientProperties.PLACEHOLDER_TEXT, "Enviar mensaje a " + newChannel + "...");
+            typingExpiryMap.clear();
+            refreshTypingIndicator();
+            updateHeaderChannelInfo(newChannel);
+            chatFeedPanel.clearFeed();
+            chatFeedPanel.updatePermissions(getEffectiveMyChannelPerms(newChannel));
+            int idx = channelListModel.indexOf(newChannel);
+            if (idx >= 0) channelList.setSelectedIndex(idx);
+            if (whiteboardDialog != null && whiteboardDialog.isVisible()) {
+                whiteboardDialog.setActiveChannel(newChannel);
+            }
         });
     }
 
     @Override
     public void onTypingUpdated(String sender, String channel, boolean isTyping) {
+        if (sender == null || sender.equalsIgnoreCase(currentUsername)) return;
+        if (!channel.equalsIgnoreCase(connection.getCurrentChannel())) return;
         SwingUtilities.invokeLater(() -> {
-            if (sender == null || sender.equalsIgnoreCase(currentUsername)) {
-                return;
-            }
             if (isTyping) {
-                activeTypingUsers.add(sender);
+                typingExpiryMap.put(sender.toLowerCase(), System.currentTimeMillis() + TYPING_DEBOUNCE_MS);
             } else {
-                activeTypingUsers.remove(sender);
+                typingExpiryMap.remove(sender.toLowerCase());
             }
-
-            if (activeTypingUsers.isEmpty()) {
-                typingIndicatorLabel.setText(" ");
-            } else if (activeTypingUsers.size() == 1) {
-                String u = activeTypingUsers.iterator().next();
-                typingIndicatorLabel.setText("... @" + u + " está escribiendo en " + channel + "...");
-            } else if (activeTypingUsers.size() == 2) {
-                List<String> list = new ArrayList<>(activeTypingUsers);
-                typingIndicatorLabel.setText("... @" + list.get(0) + " y @" + list.get(1) + " están escribiendo...");
-            } else {
-                typingIndicatorLabel.setText("... Varias personas están escribiendo...");
-            }
+            refreshTypingIndicator();
         });
     }
 
     @Override
-    public void onHistoryReceived(String channel, List<Message> history) {
+    public void onWebhookListReceived(String channel, List<WebhookInfo> webhooks) {
         SwingUtilities.invokeLater(() -> {
-            if (history == null || history.isEmpty()) {
-                return;
-            }
-            String divider = "<div class='history-divider'>--- Mensajes anteriores en " + escapeHtml(channel) + " (" + history.size() + ") ---</div>";
-            appendHtml(divider);
-
-            for (Message m : history) {
-                String time = TIME_FORMATTER.format(Instant.ofEpochMilli(m.getTimestamp()));
-                boolean isMe = currentUsername != null && currentUsername.equalsIgnoreCase(m.getSender());
-                boolean isBot = "RealTimeBot".equalsIgnoreCase(m.getSender());
-                String senderClass = isMe ? "sender-me" : (isBot ? "sender-bot" : "sender-other");
-                String displayName = isMe ? "Tú" : escapeHtml(m.getSender());
-                String botBadge = isBot ? "<span class='bot-badge'>BOT AI</span>" : "";
-                String userLink = isBot ? ("@" + displayName) : ("<a href='user:" + escapeHtml(m.getSender()) + "' style='text-decoration:none;' class='" + senderClass + "'>@" + displayName + "</a>");
-
-                String html = "<div class='msg-row'><span class='timestamp'>[" + time + "]</span> " +
-                        "<span class='" + senderClass + "'>" + userLink + botBadge + ":</span> " +
-                        "<span class='body-text'>" + escapeHtml(m.getContent()) + "</span></div>";
-                appendHtml(html);
+            webhookCacheList.clear();
+            webhookListModel.clear();
+            if (webhooks != null) {
+                for (WebhookInfo w : webhooks) {
+                    webhookCacheList.add(w);
+                    webhookListModel.addElement(w.getName() + " -> " + w.getUrl());
+                }
             }
         });
     }
 
     @Override
-    public void onProfileReceived(UserProfile profile) {
-        if (profile != null && profile.getUsername() != null) {
-            profileCache.put(profile.getUsername(), profile);
-            SwingUtilities.invokeLater(() -> {
-                userList.repaint();
-                // Si la ventana modal o popup de perfil está abierta para este usuario, actualizarla en vivo
-                if (currentProfileDialog != null && currentProfileDialog.isShowing()
-                        && profile.getUsername().equalsIgnoreCase(currentProfileDialogUser)) {
-                    if (currentProfileAvatarLabel != null) {
-                        currentProfileAvatarLabel.setIcon(new AvatarPresetIcon(profile.getAvatar(), 54));
-                        currentProfileAvatarLabel.repaint();
-                    }
-                    if (currentProfileBannerPanel != null) {
-                        currentProfileBannerPanel.setBannerStyle(profile.getBanner());
-                        currentProfileBannerPanel.repaint();
-                    }
-                    if (currentProfileBioArea != null) {
-                        currentProfileBioArea.setText(profile.getBio());
-                    }
-                }
-            });
+    public void onSearchResultsReceived(String query, List<Message> results) {
+        SwingUtilities.invokeLater(() -> {
+            if (searchDialog == null) openSearchDialog(query);
+            searchDialog.updateResults(query, results);
+        });
+    }
+
+    @Override
+    public void onWhiteboardEvent(String channel, String sender, String payloadJson) {
+        SwingUtilities.invokeLater(() -> {
+            if (whiteboardDialog != null) {
+                whiteboardDialog.handleRemoteEvent(sender, payloadJson);
+            }
+        });
+    }
+
+    @Override
+    public void onVoiceStateUpdated(Message stateMsg) {
+        if (stateMsg.getSender() != null && stateMsg.getVoiceLevel() != null) {
+            voiceLevelsMap.put(stateMsg.getSender().toLowerCase(), stateMsg.getVoiceLevel());
         }
+        synchronized (currentVoiceParticipants) {
+            currentVoiceParticipants.clear();
+            currentVoiceParticipants.addAll(stateMsg.getUsers());
+        }
+        SwingUtilities.invokeLater(() -> userList.repaint());
+    }
+
+    @Override
+    public void onVoiceAudioReceived(String channel, String sender, String base64Audio) {
+        voiceAudioManager.playRemoteAudio(channel, base64Audio);
     }
 
     @Override
     public void onDisconnected(String reason) {
-        SwingUtilities.invokeLater(() -> {
-            statusLabel.setText("Desconectado");
-            statusLabel.setIcon(new StatusDotIcon(new Color(237, 66, 69)));
-            statusLabel.setForeground(new Color(237, 66, 69));
-            userListModel.clear();
-            userCountLabel.setText("EN ESTE CANAL (0)");
-            activeTypingUsers.clear();
-            typingIndicatorLabel.setText(" ");
-            appendSystemHtml("Desconectado del servidor: " + reason);
-        });
+        SwingUtilities.invokeLater(this::updateConnectionBannerOffline);
     }
 
     @Override
     public void onError(String errorMessage) {
-        SwingUtilities.invokeLater(() -> {
-            appendSystemHtml("ERROR: " + errorMessage);
-            Component parentComp = (activeDialog != null && activeDialog.isShowing()) ? activeDialog : this;
-            JOptionPane.showMessageDialog(parentComp, errorMessage, "Aviso de RealTimeChat", JOptionPane.WARNING_MESSAGE);
+        SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, errorMessage, "Aviso de Red", JOptionPane.ERROR_MESSAGE));
+    }
+
+    // =========================================================================
+    // HELPERS INTERNOS DE UI
+    // =========================================================================
+
+    private void updateConnectionBannerOffline() {
+        int qSize = connection.getOfflineQueueSize();
+        statusLabel.setText("Reconectando..." + (qSize > 0 ? " (Cola: " + qSize + ")" : ""));
+        statusLabel.setIcon(new StatusDotIcon(new Color(0xF0B232)));
+        statusLabel.setForeground(new Color(0xF0B232));
+        // Permitir encolar mensajes offline si el usuario ya inició sesión previamente
+        boolean hasSession = !currentUsername.isBlank();
+        inputArea.setEnabled(hasSession);
+        sendButton.setEnabled(hasSession);
+    }
+
+    private void updateOwnDock() {
+        dockNameLabel.setText(currentUsername.isBlank() ? "Sin sesión" : "@" + currentUsername + " [" + myProfile.getRole() + "]");
+        Color pColor = ImageUtils.parseColor(myProfile.getPresence().getColorHex(), new Color(0x23A55A));
+        dockAvatarLabel.setIcon(ImageUtils.buildAvatarIcon(currentUsername, myProfile.getAvatar(), myProfile.getAvatarImageBase64(), 36, pColor));
+        String tag = myProfile.getStatusSymbol() != null ? myProfile.getStatusSymbol() + " " : "";
+        String custom = myProfile.getCustomStatus() != null ? " - " + myProfile.getCustomStatus() : "";
+        dockStatusLabel.setText(myProfile.getPresence().getLabel() + " " + tag + custom);
+    }
+
+    private void updateHeaderChannelInfo(String channel) {
+        channelTitleLabel.setText(channel);
+        ChannelInfo info = channelInfoMap.get(channel.toLowerCase());
+        channelTopicLabel.setText(info != null && info.getTopic() != null ? "| " + info.getTopic() : "");
+    }
+
+    private long getEffectiveMyChannelPerms(String channel) {
+        long base = myProfile.getPermissions();
+        ChannelInfo info = channelInfoMap.get(channel.toLowerCase());
+        if (info == null) return base;
+        return Permission.computeEffectivePermissions(base, info.getDefaultAllowMask(), info.getDefaultDenyMask());
+    }
+
+    private void refreshPermissionControlledUi() {
+        long perms = myProfile.getPermissions();
+        boolean canChan = Permission.hasPermission(perms, Permission.MANAGE_CHANNELS);
+        boolean canRoles = Permission.hasPermission(perms, Permission.MANAGE_ROLES);
+        boolean canHooks = Permission.hasPermission(perms, Permission.MANAGE_WEBHOOKS);
+        createChanBtn.setEnabled(canChan);
+        deleteChanBtn.setEnabled(canChan);
+        permissionsBtn.setEnabled(canRoles || canChan);
+        webhooksBtn.setEnabled(canHooks);
+    }
+
+    private void refreshTypingIndicator() {
+        if (typingExpiryMap.isEmpty()) {
+            typingIndicatorLabel.setText(" ");
+            return;
+        }
+        List<String> users = new ArrayList<>();
+        for (String key : typingExpiryMap.keySet()) {
+            UserProfile p = profileCache.get(key);
+            users.add(p != null ? p.getUsername() : key);
+        }
+        if (users.size() == 1) {
+            typingIndicatorLabel.setText("  " + users.get(0) + " está escribiendo...");
+        } else {
+            typingIndicatorLabel.setText("  " + String.join(", ", users) + " están escribiendo...");
+        }
+    }
+
+    private static JButton makeHeaderBtn(String text) {
+        JButton b = new JButton(text);
+        b.putClientProperty(FlatClientProperties.BUTTON_TYPE, FlatClientProperties.BUTTON_TYPE_ROUND_RECT);
+        b.setFont(new Font("Segoe UI", Font.PLAIN, 11));
+        b.setBackground(new Color(0x3F4147));
+        b.setForeground(Color.WHITE);
+        b.setFocusPainted(false);
+        b.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        return b;
+    }
+
+    private static void styleTinySidebarBtn(JButton b) {
+        b.setFont(new Font("Segoe UI", Font.BOLD, 12));
+        b.setBackground(new Color(0x3F4147));
+        b.setForeground(Color.WHITE);
+        b.setMargin(new Insets(1, 6, 1, 6));
+        b.setFocusPainted(false);
+    }
+
+    public void showConnectionDialog() {
+        if (activeDialog != null && activeDialog.isVisible()) {
+            activeDialog.toFront();
+            return;
+        }
+
+        JDialog dialog = new JDialog(this, "Conectar a RealTimeChat NextGen", true);
+        activeDialog = dialog;
+        dialog.setSize(450, 390);
+        dialog.setLocationRelativeTo(this);
+        dialog.setResizable(false);
+
+        JPanel panel = new JPanel(new GridBagLayout());
+        panel.setBorder(new EmptyBorder(18, 22, 18, 22));
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.insets = new Insets(6, 6, 6, 6);
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+
+        JLabel title = new JLabel("RealTimeChat NextGen", JLabel.CENTER);
+        ImageIcon dialogIcon = getAppImageIcon(38);
+        if (dialogIcon != null) {
+            title.setIcon(dialogIcon);
+            title.setIconTextGap(10);
+        }
+        title.setFont(new Font("Segoe UI", Font.BOLD, 19));
+        title.setForeground(new Color(0x5865F2));
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        gbc.gridwidth = 2;
+        panel.add(title, gbc);
+
+        gbc.gridwidth = 1;
+        gbc.gridy = 1;
+        panel.add(new JLabel("Servidor IP / Host:"), gbc);
+        JTextField hostField = new JTextField(currentServerHost, 18);
+        gbc.gridx = 1;
+        panel.add(hostField, gbc);
+
+        gbc.gridx = 0;
+        gbc.gridy = 2;
+        panel.add(new JLabel("Puerto TCP:"), gbc);
+        JTextField portField = new JTextField(String.valueOf(currentServerPort), 18);
+        gbc.gridx = 1;
+        panel.add(portField, gbc);
+
+        gbc.gridx = 0;
+        gbc.gridy = 3;
+        panel.add(new JLabel("Nickname:"), gbc);
+        JTextField userField = new JTextField(currentUsername, 18);
+        gbc.gridx = 1;
+        panel.add(userField, gbc);
+
+        gbc.gridx = 0;
+        gbc.gridy = 4;
+        panel.add(new JLabel("Avatar Preset:"), gbc);
+        JComboBox<String> avatarCombo = new JComboBox<>(new String[]{
+                "cyber-neon", "synthwave", "cosmic", "emerald", "sunset", "bot-matrix", "golden", "retro-pixel"
         });
+        avatarCombo.setSelectedItem(myProfile.getAvatar());
+        gbc.gridx = 1;
+        panel.add(avatarCombo, gbc);
+
+        JLabel feedback = new JLabel(" ");
+        feedback.setForeground(new Color(0xF23F43));
+        gbc.gridx = 0;
+        gbc.gridy = 5;
+        gbc.gridwidth = 2;
+        panel.add(feedback, gbc);
+
+        JButton connectBtn = new JButton("Entrar al Chat");
+        connectBtn.setBackground(new Color(0x5865F2));
+        connectBtn.setForeground(Color.WHITE);
+        connectBtn.setFont(new Font("Segoe UI", Font.BOLD, 14));
+        gbc.gridy = 6;
+        panel.add(connectBtn, gbc);
+
+        connectBtn.addActionListener(e -> {
+            String host = hostField.getText().trim();
+            String portStr = portField.getText().trim();
+            String nick = userField.getText().trim();
+            if (host.isEmpty() || nick.isEmpty()) {
+                feedback.setText("Completa host y nickname.");
+                return;
+            }
+            int port;
+            try {
+                port = Integer.parseInt(portStr);
+            } catch (NumberFormatException ex) {
+                feedback.setText("Puerto inválido.");
+                return;
+            }
+            connectBtn.setEnabled(false);
+            feedback.setText("Conectando...");
+
+            new Thread(() -> {
+                boolean ok = connection.connect(host, port, nick, this);
+                SwingUtilities.invokeLater(() -> {
+                    connectBtn.setEnabled(true);
+                    if (ok) {
+                        currentServerHost = host;
+                        currentServerPort = port;
+                        myProfile.setUsername(nick);
+                        myProfile.setAvatar((String) avatarCombo.getSelectedItem());
+                        connection.updateProfile(myProfile);
+                        dialog.dispose();
+                    } else {
+                        feedback.setText("No se pudo conectar (nick ocupado o servidor caído).");
+                    }
+                });
+            }, "gui-connect").start();
+        });
+
+        dialog.setContentPane(panel);
+        dialog.getRootPane().setDefaultButton(connectBtn);
+        dialog.setVisible(true);
     }
 
-    // --- Renderizadores de Lista y Componentes Gráficos Personalizados ---
-
-    private class ChannelListCellRenderer extends DefaultListCellRenderer {
+    private class MemberListRenderer extends DefaultListCellRenderer {
         @Override
         public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-            JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-            label.setBorder(new EmptyBorder(6, 12, 6, 12));
-            label.setFont(new Font("Segoe UI", Font.BOLD, 13));
+            String name = value != null ? value.toString() : "";
+            UserProfile prof = profileCache.get(name.toLowerCase());
+            PresenceStatus presence = prof != null ? prof.getPresence() : PresenceStatus.ONLINE;
+            Color ringColor = ImageUtils.parseColor(presence.getColorHex(), new Color(0x23A55A));
 
-            String ch = value != null ? value.toString() : "";
-            label.setText("#  " + (ch.startsWith("#") ? ch.substring(1) : ch));
-
-            if (isSelected) {
-                label.setBackground(new Color(53, 55, 60));
-                label.setForeground(Color.WHITE);
-            } else {
-                label.setBackground(new Color(43, 45, 49));
-                label.setForeground(new Color(148, 155, 164));
-            }
-            return label;
-        }
-    }
-
-    private class UserListCellRenderer extends DefaultListCellRenderer {
-        @Override
-        public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-            JLabel label = (JLabel) super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-            label.setBorder(new EmptyBorder(6, 10, 6, 10));
-            label.setFont(new Font("Segoe UI", Font.PLAIN, 13));
-
-            String user = value != null ? value.toString() : "";
-            boolean isMe = currentUsername != null && currentUsername.equalsIgnoreCase(user);
-            label.setText("@" + user + (isMe ? " (Tú)" : ""));
-
-            UserProfile prof = profileCache.get(user);
-            String avatarKey = prof != null ? prof.getAvatar() : (isMe ? myProfile.getAvatar() : "cyber-neon");
-            label.setIcon(new AvatarPresetIcon(avatarKey, 18));
-
-            if (isSelected) {
-                label.setBackground(new Color(53, 55, 60));
-                label.setForeground(Color.WHITE);
-            } else {
-                label.setBackground(new Color(43, 45, 49));
-                label.setForeground(new Color(219, 222, 225));
-            }
-            return label;
-        }
-    }
-
-    /**
-     * Panel superior para renderizar el banner del perfil (con gradientes o colores sólidos).
-     */
-    public static class ProfileBannerPanel extends JPanel {
-        private String bannerStyle;
-
-        public ProfileBannerPanel(String style) {
-            this.bannerStyle = style != null ? style : "#5865F2";
-        }
-
-        public void setBannerStyle(String style) {
-            this.bannerStyle = style;
-        }
-
-        @Override
-        protected void paintComponent(Graphics g) {
-            super.paintComponent(g);
-            Graphics2D g2 = (Graphics2D) g.create();
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-            int w = getWidth();
-            int h = getHeight();
-
-            if ("gradient-cyber".equalsIgnoreCase(bannerStyle)) {
-                GradientPaint gp = new GradientPaint(0, 0, new Color(88, 101, 242), w, h, new Color(235, 69, 158));
-                g2.setPaint(gp);
-            } else if ("gradient-sunset".equalsIgnoreCase(bannerStyle)) {
-                GradientPaint gp = new GradientPaint(0, 0, new Color(242, 63, 67), w, h, new Color(254, 231, 92));
-                g2.setPaint(gp);
-            } else if ("gradient-cosmic".equalsIgnoreCase(bannerStyle)) {
-                GradientPaint gp = new GradientPaint(0, 0, new Color(87, 242, 135), w, h, new Color(88, 101, 242));
-                g2.setPaint(gp);
-            } else {
-                Color c;
-                try {
-                    c = Color.decode(bannerStyle);
-                } catch (Exception e) {
-                    c = new Color(88, 101, 242);
-                }
-                g2.setColor(c);
+            Double voiceLevel = voiceLevelsMap.get(name.toLowerCase());
+            boolean speaking = currentVoiceParticipants.stream().anyMatch(u -> u.equalsIgnoreCase(name))
+                    && voiceLevel != null && voiceLevel > 0.05;
+            if (speaking) {
+                ringColor = new Color(0x57F287);
             }
 
-            g2.fillRect(0, 0, w, h);
-            g2.dispose();
-        }
-    }
+            String roleTag = "";
+            if (prof != null && Permission.ROLE_ADMIN.equalsIgnoreCase(prof.getRole())) roleTag = " [ADMIN]";
+            else if (prof != null && Permission.ROLE_MODERATOR.equalsIgnoreCase(prof.getRole())) roleTag = " [MOD]";
 
-    /**
-     * Icono vectorial para renderizar presets de avatar con badges de estilo.
-     */
-    public static class AvatarPresetIcon implements javax.swing.Icon {
-        private final String preset;
-        private final int size;
+            String custom = prof != null && prof.getCustomStatus() != null ? prof.getCustomStatus() : "";
+            String sym = prof != null && prof.getStatusSymbol() != null ? prof.getStatusSymbol() + " " : "";
+            String subLine = speaking ? "[Hablando...]" : (sym + custom).trim();
 
-        public AvatarPresetIcon(String preset, int size) {
-            this.preset = preset != null ? preset : "cyber-neon";
-            this.size = size;
-        }
+            String html = subLine.isEmpty()
+                    ? "<html><b>" + name + "</b><span style='color:#949BA4;font-size:10px;'>" + roleTag + "</span></html>"
+                    : "<html><b>" + name + "</b><span style='color:#949BA4;font-size:10px;'>" + roleTag + "</span><br/><span style='color:#949BA4;font-size:10px;'>" + subLine.replace("<", "&lt;") + "</span></html>";
 
-        @Override
-        public void paintIcon(Component c, Graphics g, int x, int y) {
-            Graphics2D g2 = (Graphics2D) g.create();
-            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-            Color baseColor;
-            switch (preset.toLowerCase()) {
-                case "synthwave" -> baseColor = new Color(235, 69, 158); // Rosa neón
-                case "cosmic" -> baseColor = new Color(155, 89, 182);    // Violeta cósmico
-                case "emerald" -> baseColor = new Color(35, 165, 90);    // Verde esmeralda
-                case "sunset" -> baseColor = new Color(230, 126, 34);    // Naranja atardecer
-                case "bot-matrix" -> baseColor = new Color(46, 204, 113);// Verde matriz
-                case "golden" -> baseColor = new Color(241, 196, 15);    // Oro
-                case "retro-pixel" -> baseColor = new Color(52, 152, 219);// Azul retro
-                default -> baseColor = new Color(88, 101, 242);          // Blurple Discord
-            }
-
-            // Círculo base del avatar
-            g2.setColor(baseColor);
-            g2.fillOval(x, y, size, size);
-
-            // Borde estético
-            g2.setColor(new Color(255, 255, 255, 120));
-            g2.drawOval(x, y, size - 1, size - 1);
-
-            // Letra inicial o símbolo central si el tamaño lo permite
-            if (size >= 24) {
-                g2.setColor(Color.WHITE);
-                g2.setFont(new Font("Segoe UI", Font.BOLD, size / 2));
-                String initial = preset.substring(0, 1).toUpperCase();
-                int strW = g2.getFontMetrics().stringWidth(initial);
-                int strH = g2.getFontMetrics().getAscent();
-                g2.drawString(initial, x + (size - strW) / 2, y + (size + strH) / 2 - 2);
-            }
-
-            g2.dispose();
-        }
-
-        @Override
-        public int getIconWidth() {
-            return size + 4;
-        }
-
-        @Override
-        public int getIconHeight() {
-            return size;
+            JLabel lbl = (JLabel) super.getListCellRendererComponent(list, html, index, isSelected, cellHasFocus);
+            lbl.setIcon(ImageUtils.buildAvatarIcon(
+                    name,
+                    prof != null ? prof.getAvatar() : "cyber-neon",
+                    prof != null ? prof.getAvatarImageBase64() : null,
+                    28,
+                    ringColor
+            ));
+            lbl.setIconTextGap(8);
+            lbl.setBorder(new EmptyBorder(4, 6, 4, 6));
+            lbl.setBackground(isSelected ? new Color(0x404249) : new Color(0x2B2D31));
+            lbl.setForeground(name.equalsIgnoreCase(currentUsername) ? new Color(0x949CF7) : new Color(0xDBDEE1));
+            return lbl;
         }
     }
 
     private static class StatusDotIcon implements javax.swing.Icon {
         private final Color color;
-        public StatusDotIcon(Color color) { this.color = color; }
+        StatusDotIcon(Color color) { this.color = color; }
         @Override
         public void paintIcon(Component c, Graphics g, int x, int y) {
             Graphics2D g2 = (Graphics2D) g.create();
@@ -1305,8 +1708,8 @@ public class ChatGuiClient extends JFrame implements ChatEventListener {
             g2.fillOval(x + 1, y + 2, 9, 9);
             g2.dispose();
         }
-        @Override public int getIconWidth() { return 13; }
-        @Override public int getIconHeight() { return 13; }
+        @Override public int getIconWidth() { return 12; }
+        @Override public int getIconHeight() { return 12; }
     }
 
     public static void main(String[] args) {

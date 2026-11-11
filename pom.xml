@@ -18,6 +18,7 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <flatlaf.version>3.5.4</flatlaf.version>
         <jackson.version>2.17.0</jackson.version>
+        <h2.version>2.2.224</h2.version>
         <junit.version>5.10.2</junit.version>
     </properties>
 
@@ -41,6 +42,13 @@
             <groupId>com.fasterxml.jackson.datatype</groupId>
             <artifactId>jackson-datatype-jsr310</artifactId>
             <version>${jackson.version}</version>
+        </dependency>
+
+        <!-- H2 Embedded SQL Database for Persistence & Cursor Pagination -->
+        <dependency>
+            <groupId>com.h2database</groupId>
+            <artifactId>h2</artifactId>
+            <version>${h2.version}</version>
         </dependency>
 
         <!-- JUnit 5 Jupiter Engine for Unit Testing -->

@@ -43,8 +43,11 @@ out/
 # Carpetas y archivos de VS Code
 .vscode/
 
-# Archivos de datos locales
+# Archivos de datos locales y base de datos H2
 partidas.txt
+data/
+*.mv.db
+*.trace.db
 
 # Archivos ocultos generados por el Sistema Operativo (macOS / Windows)
 .DS_Store

@@ -5,74 +5,55 @@ package com.danicaju.chat.model;
  * de comunicación cliente-servidor de RealTimeChat.
  */
 public enum MessageType {
-    /**
-     * Solicitud de registro o unión de un cliente a la sala/servidor.
-     * Incluye el nombre de usuario solicitado en el campo sender.
-     */
+    // --- Protocolo base ---
     JOIN,
-
-    /**
-     * Mensaje de texto público emitido a los clientes del canal actual.
-     */
     CHAT,
-
-    /**
-     * Mensaje privado dirigido a un usuario específico mediante target.
-     */
     PRIVATE,
-
-    /**
-     * Notificación reactiva con la lista de usuarios conectados en el canal o sala.
-     */
     USER_LIST,
-
-    /**
-     * Solicitud o aviso de desconexión controlada de un cliente.
-     */
     LEAVE,
-
-    /**
-     * Mensaje informativo, confirmación o error emitido por el servidor.
-     */
     SYSTEM,
 
-    /**
-     * Solicitud o notificación de cambio de canal de chat (ej: #general, #ia-computacion, #random).
-     */
+    // --- Canales e historial ---
     JOIN_CHANNEL,
-
-    /**
-     * Notificación con la lista de canales disponibles en el servidor.
-     */
     CHANNEL_LIST,
-
-    /**
-     * Entrega del búfer de reproducción (historial reciente) al entrar a un canal.
-     */
     HISTORY,
 
-    /**
-     * Evento reactivo que indica que un usuario ha comenzado a escribir en un canal.
-     */
+    // --- Indicadores de escritura y perfiles ---
     TYPING_START,
-
-    /**
-     * Evento reactivo que indica que un usuario ha dejado de escribir.
-     */
     TYPING_STOP,
-
-    /**
-     * Solicitud o aviso de actualización del perfil personal (avatar, biografía, banner).
-     */
     PROFILE_UPDATE,
-
-    /**
-     * Solicitud de consulta del perfil de un usuario específico.
-     */
     PROFILE_REQUEST,
+    PROFILE_RESPONSE,
 
-    /**
-     * Respuesta del servidor con los datos del perfil solicitado.
-     */
-    PROFILE_RESPONSE
+    // --- FASE 1: Lifecycle, Threads, Presencia, Reacciones ---
+    MESSAGE_ACK,
+    MESSAGE_DELETE,
+    REACTION_ADD,
+    REACTION_REMOVE,
+    PRESENCE_UPDATE,
+    PING,
+    PONG,
+
+    // --- FASE 2: Paginación por Cursores, Gestión de Canales y Permisos Bitfield ---
+    HISTORY_PAGE,
+    CHANNEL_CREATE,
+    CHANNEL_DELETE,
+    CHANNEL_METADATA,
+    ROLE_UPDATE,
+
+    // --- FASE 3: Comandos (/poll), Webhooks y Búsqueda Avanzada ---
+    POLL_VOTE,
+    WEBHOOK_CREATE,
+    WEBHOOK_DELETE,
+    WEBHOOK_LIST,
+    SEARCH_REQUEST,
+    SEARCH_RESPONSE,
+
+    // --- FASE 4: OpenGraph Embeds, E2EE, Pizarra Colaborativa y Voz/WebRTC ---
+    MESSAGE_EMBED_UPDATE,
+    KEY_EXCHANGE,
+    WHITEBOARD_EVENT,
+    VOICE_STATE,
+    VOICE_AUDIO,
+    WEBRTC_SIGNAL
 }

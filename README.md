@@ -3,21 +3,21 @@
   <b>English</b> | <a href="README.es.md">Español</a>
 </p>
 
-# RealTimeChat NextGen
+# RealTimeChat NextGen v4.0
 
 <p align="center">
   <img src="https://img.shields.io/badge/Java-21%20LTS-ED8B00?style=for-the-badge&logo=openjdk&logoColor=white" alt="Java 21 LTS" />
-  <img src="https://img.shields.io/badge/Maven-3.9%2B-C71A36?style=for-the-badge&logo=apachemaven&logoColor=white" alt="Maven" />
+  <img src="https://img.shields.io/badge/Database-H2%20Embedded-0000BB?style=for-the-badge" alt="H2 Embedded SQL" />
   <img src="https://img.shields.io/badge/Concurrency-Virtual%20Threads-007396?style=for-the-badge" alt="Virtual Threads" />
-  <img src="https://img.shields.io/badge/Protection-Token%20Bucket-E0234E?style=for-the-badge" alt="Token Bucket" />
+  <img src="https://img.shields.io/badge/Security-E2EE%20ECDH%20%2B%20Bitfields-10B981?style=for-the-badge" alt="E2EE and RBAC" />
   <img src="https://img.shields.io/badge/UI-FlatLaf%20Dark-2F343F?style=for-the-badge" alt="FlatLaf Dark" />
-  <img src="https://img.shields.io/badge/AI-RealTimeBot%20Assistant-7289DA?style=for-the-badge" alt="AI Bot" />
+  <img src="https://img.shields.io/badge/Sandbox-Piston%20%26%20Webhooks-7289DA?style=for-the-badge" alt="Piston and Webhooks" />
   <img src="https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker&logoColor=white" alt="Docker" />
-  <img src="https://img.shields.io/badge/Testing-81%20Tests%20Passing-25A162?style=for-the-badge&logo=junit5&logoColor=white" alt="JUnit 5" />
+  <img src="https://img.shields.io/badge/Testing-103%20Tests%20Passing-25A162?style=for-the-badge&logo=junit5&logoColor=white" alt="JUnit 5" />
   <img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="License MIT" />
 </p>
 
-**RealTimeChat NextGen** is a modern, high-concurrency real-time collaboration and instant messaging platform built in **Java 21 LTS** over raw TCP/IP sockets. It features a complete multi-channel room architecture, message replay buffer (history), real-time typing indicators, user profile customization (avatar, bio, and banner styles), token bucket rate limiting against flooding, an embedded intelligent computing assistant (**RealTimeBot**), and containerized deployment via Docker.
+**RealTimeChat NextGen v4.0** is a high-concurrency real-time communication and collaboration suite built in **Java 21 LTS** (Virtual Threads, FlatLaf Dark Swing GUI, H2 SQL persistence, embedded HTTP Webhook server, and TCP JSON sockets). It brings Discord-grade workflows including Optimistic UI, threads, live reactions, presence detection, cursor pagination, offline queuing/resync, bitfield permissions, Markdown + Piston code execution, slash commands, search filters, clipboard image paste, OpenGraph previews, PCM voice rooms, a collaborative whiteboard, and ECDH + AES-256-GCM end-to-end encrypted direct messages.
 
 <p align="center">
   <img src="assets/realtimechat-ui-preview.svg" alt="RealTimeChat FlatLaf Dark Client Interface" width="100%" />
@@ -27,40 +27,32 @@
 
 ## Key Features
 
-1. **High Concurrency & Virtual Threads (Project Loom)**:
-   - High-throughput I/O powered by Java 21 **Virtual Threads** (`Executors.newVirtualThreadPerTaskExecutor()`) with transparent fallback to cached thread pools.
-   - Low memory overhead per connection (~1 KB vs ~1 MB of traditional OS platform threads), allowing thousands of concurrent client sessions.
+### Phase 1: Real-Time Experience, Presence & Customization
+- **Custom Uploadable & Resizable Avatars**: Upload local PNG/JPG/GIF/WebP photos, zoom/pan crop interactively inside `AvatarCropDialog`, preview circular avatars across chat messages, member sidebar, and profile cards.
+- **Structured Profile Customization**: Multi-line biography editor enforced at `240` characters with live counter (`0/240`), vector avatar presets (`cyber-neon`, `synthwave`, `cosmic`, `emerald`, `sunset`, `bot-matrix`, `golden`, `retro-pixel`), and banner themes/hex colors.
+- **Optimistic UI & Message Lifecycle**: Local `tempId` `SENDING` state with reduced opacity, real-time server `MESSAGE_ACK` assigning permanent DB `id` & `timestamp`, and red `ERROR` cards with Retry / Delete actions after 8s timeout.
+- **Throttled Typing Indicators**: Client-side 2.5s emission throttle (`TYPING_START` / `TYPING_STOP`) and receiver 3.0s auto-debounce cleared immediately upon message delivery.
+- **Nested Replies & Thread Side Panel**: Clickable quote previews (`replyToId`) jumping to parent messages, plus a dedicated Discord-style side drawer (`ThreadSidePanel`) scoped by `threadParentId`.
+- **Advanced Presence System**: Automatic inactivity monitor (`IDLE`), notification suppression (`DND`), heartbeat offline tracking (`OFFLINE`), and custom status text/tag.
+- **Delta Emoji Reactions**: Incremental `REACTION_ADD` / `REACTION_REMOVE` broadcasts updating grouped counters live.
 
-2. **DoS & Flood Defense (Token Bucket Rate Limiter)**:
-   - Atomic per-client Token Bucket algorithm limiting abusive flooding and message spam while seamlessly allowing natural interactive bursts.
+### Phase 2: Scalability, Persistence & Access Control
+- **H2 Embedded SQL Database**: Persistent tables (`user_profiles`, `channels`, `messages`, `webhooks`) replacing volatile RAM history.
+- **Cursor-Based Pagination & Feed Virtualization**: `beforeId` / `afterId` keyset queries (no `OFFSET`) powering smooth upward infinite scroll without viewport jump and sliding-window card pruning.
+- **Offline FIFO Queue & Reconnect Resync**: Automatic exponential-backoff reconnect (`autoReconnect`), local queuing of messages composed while disconnected, and automatic `afterId` gap filling upon reconnect.
+- **Channel Lifecycle & Bitfield RBAC Permissions**: Create/delete text or voice channels dynamically with bitmask permissions (`VIEW_CHANNEL`, `SEND_MESSAGES`, `MANAGE_MESSAGES`, `ADMINISTRATOR`, `MANAGE_CHANNELS`, `MANAGE_ROLES`, `MANAGE_WEBHOOKS`, `CREATE_THREADS`, `VOICE_CONNECT`) and per-channel user overrides enforced on both server and client UI.
 
-3. **Multi-Channel Architecture**:
-   - Independent text channels (`#general`, `#ia-computacion`, `#random`) with dynamic channel switching, per-channel user rosters, and isolated message distribution.
+### Phase 3: Technical Tools, Commands & Search
+- **Rich Markdown & Piston Code Runner**: Renders `**bold**`, `*italic*`, `` `inline` ``, `~~strike~~`, `@mentions`, auto-linked URLs, and fenced code blocks with Copy button and **Run >** execution against the Piston API (`stdout`/`stderr`).
+- **Slash (`/`) Autocomplete Engine & Polls**: Live popup suggestions for `/poll Question | Opt1 | Opt2` (real-time vote tallies), `/roll [NdM]`, `/shrug`, `/clear`, `/join`, `/createchannel`, `/deletechannel`, `/search`, `/status`, `/w`, `/bio`, and `/whiteboard`.
+- **Channel Webhooks (`POST /api/webhooks/{id}/{token}`)**: Embedded `com.sun.net.httpserver.HttpServer` (`tcpPort + 1`, default `5001`) accepting external JSON payloads and broadcasting rich embeds into channels, with `/api/health`.
+- **Advanced Search with Modifiers**: Filter queries parsed via `from:user`, `in:#channel`, `has:link`, `has:file`, and keywords with click-to-jump navigation.
 
-4. **Message Replay Buffer (History Delivery)**:
-   - Server-side circular buffer (last 50 messages per channel) replayed to clients upon joining or switching channels.
-
-5. **Real-Time Typing Indicator**:
-   - Reactive `TYPING_START` and `TYPING_STOP` protocol events notifying users when peers are typing in the current channel, with automatic debouncing.
-
-6. **Customizable User Profiles**:
-   - Profile metadata support: Biography (up to 300 characters), vector avatar presets (`cyber-neon`, `synthwave`, `cosmic`, `emerald`, `sunset`, `bot-matrix`, `golden`, `retro-pixel`), and customizable banners (colors and gradients).
-   - In-app profile editor and profile card modal dialogs.
-
-7. **Embedded AI Computing Assistant (RealTimeBot)**:
-   - Virtual assistant invoked in any channel via `@bot` or `@ai`.
-   - Capabilities:
-     - Channel summary: `@bot resume` summarizes recent conversation points.
-     - Mathematical calculator: `@bot calc <expression>` (e.g., `@bot calc 2^10 + 50`, `@bot calc sqrt(144)`).
-     - System diagnostics: `@bot info` (runtime memory, CPUs, virtual threads).
-     - Interactive explanations: Concurrency, deadlocks, TCP vs UDP, Big-O algorithmic complexity, Jackson serialization.
-
-8. **Dual Frontends**:
-   - **Modern Desktop GUI**: Discord/Slack-inspired dark theme powered by **FlatLaf Dark**, responsive layout, vector indicators, and popup menus.
-   - **Interactive CLI Client**: Agile terminal interface with slash commands (`/join`, `/channels`, `/bio`, `/avatar`, `/profile`, `/w`, `/help`).
-
-9. **Containerization & DevOps**:
-   - Multi-stage `Dockerfile` with JRE 21 Alpine base image for lightweight container deployment.
+### Phase 4: Media, Collaboration & Security
+- **Direct Clipboard Paste (`Ctrl+V`)**: Intercepts clipboard images, displays removable strip previews, scales/compresses via JPEG encoding (`ImageUtils`), and renders inline clickable lightboxes.
+- **Async OpenGraph Previews**: Background metadata extraction (`og:title`, `og:description`, `og:image`, `og:site_name`) with SSRF private-IP/localhost filtering pushing `MESSAGE_EMBED_UPDATE` patches.
+- **PCM Voice Channels & Collaborative Whiteboard**: Low-latency 16 kHz mono audio rooms (`javax.sound.sampled`) with RMS speaking indicators and Mute/Deafen controls, plus real-time synchronized drawing canvas (`WhiteboardDialog`) and `WEBRTC_SIGNAL` relay.
+- **End-to-End Encrypted DMs (`E2EE`)**: Ephemeral/session **ECDH (`secp256r1`)** key exchange deriving **AES-256-GCM** secrets via SHA-256; private message ciphertext + `iv` remain opaque to the server and H2 database.
 
 ---
 
@@ -68,124 +60,26 @@
 
 ```mermaid
 flowchart TD
-    subgraph Clients ["Dual Frontend Clients"]
-        GUI["ChatGuiClient (FlatLaf Dark Swing)"]
-        CLI["ChatConsoleClient (Terminal CLI)"]
+    subgraph Clients ["Dual Clients (GUI & CLI)"]
+        GUI["ChatGuiClient (FlatLaf Dark + Voice + Whiteboard + E2EE)"]
+        CLI["ChatConsoleClient (Interactive Terminal CLI)"]
     end
 
-    subgraph Server ["RealTimeChat NextGen Server (:5000)"]
-        SocketListener["ServerSocket (Accept Loop)"]
-        LoomPool["Virtual Threads ExecutorService"]
-        Handler1["ClientHandler (Session 1 + TokenBucket)"]
-        Handler2["ClientHandler (Session 2 + TokenBucket)"]
-
-        subgraph Core ["ChatRoom & State Manager"]
-            Channels["Channels (#general, #ia-computacion, #random)"]
-            Replay["Channel Replay Buffers (Last 50 msgs)"]
-            Profiles["UserProfile Registry (Bio, Avatar, Banner)"]
-            Bot["RealTimeBot AI Computing Engine"]
-        end
+    subgraph Server ["RealTimeChat NextGen Server"]
+        TCP["ServerSocket :5000 (Virtual Threads + TokenBucket)"]
+        HTTP["WebhookHttpServer :5001 (REST /api/webhooks/{id}/{token})"]
+        Core["ChatRoom (RBAC Bitfields, Channels, Presence, Bot, E2EE Relay)"]
+        DB[("H2 Embedded SQL (./data/realtimechat)")]
+        OG["OpenGraphService (Async + SSRF Guard)"]
     end
 
-    GUI <-->|TCP Socket / JSON| SocketListener
-    CLI <-->|TCP Socket / JSON| SocketListener
-    SocketListener -->|Virtual Thread Task| LoomPool
-    LoomPool --> Handler1
-    LoomPool --> Handler2
-    Handler1 <--> Channels
-    Handler2 <--> Channels
-    Channels <--> Replay
-    Channels <--> Profiles
-    Channels <--> Bot
+    GUI <-->|TCP JSON / E2EE| TCP
+    CLI <-->|TCP JSON| TCP
+    TCP --> Core
+    HTTP -->|Embed Broadcast| Core
+    Core <--> DB
+    Core --> OG
 ```
-
----
-
-## JSON Protocol Specification
-
-All frames exchanged utilize UTF-8 JSON payloads serialized through Jackson Databind and JavaTimeModule.
-
-### Frame Fields
-
-| Field | Type | Description |
-| :--- | :---: | :--- |
-| `type` | `String` | Protocol message type (`JOIN`, `CHAT`, `PRIVATE`, `USER_LIST`, `LEAVE`, `SYSTEM`, `JOIN_CHANNEL`, `CHANNEL_LIST`, `HISTORY`, `TYPING_START`, `TYPING_STOP`, `PROFILE_UPDATE`, `PROFILE_REQUEST`, `PROFILE_RESPONSE`). |
-| `sender` | `String` | Alias of the origin user, `SYSTEM`, or `RealTimeBot`. |
-| `target` | `String` | Target user for private messages or profile queries. |
-| `channel` | `String` | Active channel identifier (e.g., `#general`, `#ia-computacion`). |
-| `content` | `String` | Message text or system notification payload. |
-| `users` | `List<String>` | Active roster payload for the channel. |
-| `channels` | `List<String>` | Available channels roster. |
-| `history` | `List<Message>` | Replay buffer delivered when entering a channel. |
-| `profile` | `UserProfile` | Profile metadata (username, bio, avatar, banner). |
-| `timestamp` | `long` | Unix epoch millisecond timestamp. |
-
-### Protocol Examples
-
-```json
-// 1. Channel Switching
-{
-  "type": "JOIN_CHANNEL",
-  "sender": "alice",
-  "channel": "#ia-computacion",
-  "timestamp": 1731175200000
-}
-
-// 2. Real-Time Typing Start
-{
-  "type": "TYPING_START",
-  "sender": "alice",
-  "channel": "#general",
-  "timestamp": 1731175205000
-}
-
-// 3. User Profile Update
-{
-  "type": "PROFILE_UPDATE",
-  "sender": "alice",
-  "profile": {
-    "username": "alice",
-    "bio": "Cloud and Distributed Systems Specialist",
-    "avatar": "synthwave",
-    "banner": "gradient-cyber"
-  },
-  "timestamp": 1731175210000
-}
-
-// 4. AI Assistant Query
-{
-  "type": "CHAT",
-  "sender": "alice",
-  "channel": "#ia-computacion",
-  "content": "@bot calc 2^10",
-  "timestamp": 1731175215000
-}
-```
-
----
-
-## Available Commands
-
-### Desktop GUI
-- Double-click any user in the sidebar to open their **Profile Card** or start a whisper.
-- Click **"Mi Perfil"** in the top bar to edit bio, avatar presets, and banner styles with live preview.
-- Click any channel in **CANALES DE TEXTO** to switch room and load its replay buffer.
-- In input field: type `@bot resume`, `@bot calc 2^10`, `/w <user> <message>`, or `/join <#channel>`.
-
-### Terminal CLI
-| Command | Action |
-| :--- | :--- |
-| `/join <#channel>` | Switch active chat channel |
-| `/channels` | List all available channels on the server |
-| `/w <user> <msg>` | Send private direct message |
-| `/bio <text>` | Update personal biography |
-| `/avatar <preset>` | Choose avatar preset (`cyber-neon`, `synthwave`, `cosmic`, etc.) |
-| `/banner <preset/#hex>` | Customize personal banner style or hex color |
-| `/profile <user>` | Inspect user profile card |
-| `@bot <question>` | Ask the embedded AI assistant |
-| `/list` | List users connected in current channel |
-| `/help` | Display command guide |
-| `/quit` | Cleanly disconnect |
 
 ---
 
@@ -193,68 +87,48 @@ All frames exchanged utilize UTF-8 JSON payloads serialized through Jackson Data
 
 ### Prerequisites
 - **Java Development Kit (JDK) 21 LTS+**
-- **Apache Maven 3.8+**
-- *(Optional)* **Docker**
+- **Apache Maven 3.9+**
 
-### Compile & Run Tests
+### Compile, Run Tests & Package Fat JAR
 ```bash
-mvn clean test
+mvn clean test package
+```
+Produces shaded executable JAR at `target/realtimechat-1.0.0.jar` (`10.56 MB` with FlatLaf, Jackson, H2, and multi-resolution window icons).
+
+### Run Server & Client
+```bash
+# Server (TCP :5000 + Webhook HTTP :5001 + ./data/realtimechat H2 DB)
+java -cp target/realtimechat-1.0.0.jar com.danicaju.chat.server.ChatServer 5000
+
+# Desktop GUI Client
+java -jar target/realtimechat-1.0.0.jar
+
+# Terminal CLI Client
+java -cp target/realtimechat-1.0.0.jar com.danicaju.chat.client.ChatConsoleClient
 ```
 
-### Run Server (Default Port: 5000)
+### Docker Deployment
 ```bash
-mvn exec:java@server
-```
-*Custom port:*
-```bash
-mvn exec:java@server -Dexec.args="8080"
-```
-
-### Launch Desktop GUI Client
-```bash
-mvn exec:java@gui
-```
-
-### Launch Terminal CLI Client
-```bash
-mvn exec:java@cli
-```
-
-### Package Standalone Fat JAR
-```bash
-mvn clean package -DskipTests
-```
-Generates shaded executable JAR at `target/realtimechat-1.0.0.jar`.
-
----
-
-## Docker Deployment
-
-Build and run the containerized server using the included multi-stage Dockerfile:
-
-```bash
-# Build Docker image
 docker build -t realtimechat:latest .
-
-# Run container on port 5000
-docker run -d --name realtimechat-server -p 5000:5000 realtimechat:latest
+docker run -d --name realtimechat-server -p 5000:5000 -p 5001:5001 realtimechat:latest
 ```
 
 ---
 
 ## Testing & Quality Assurance
 
-The test suite contains **81 automated JUnit 5 tests** across 5 focused test suites:
-- **`RealTimeBotTest` (14 tests)**: Verification of bot queries, summarization, mathematical parsing (`^`, `sqrt`, arithmetic precedence, division by zero), and technical concepts.
-- **`ChatServerIntegrationTest` (11 tests)**: End-to-end integration over real TCP network sockets covering handshake, channels, history replay, real-time typing indicators, user profiles, reactive profile broadcasting, channel notification isolation, rate limit throttling, and bot responses.
-- **`MessageTest` (16 tests)**: Protocol serialization, forward compatibility, unknown fields tolerance, and message factory methods (including channel-scoped system messages).
-- **`UserProfileTest` (4 tests)**: Profile defaults, bio sanitization & length limits, JSON serialization, and equality.
-- **`ChatRoomTest` (32 tests)**: Atomic concurrency, case-insensitive collision defense, channel name validation, channel switching, replay buffers, and profile storage.
-- **`TokenBucketRateLimiterTest` (4 tests)**: Burst capacity, token replenishment timing, parameter validation, and multi-threaded stress tests.
+Verified with **103 automated JUnit 5 tests** across 15 test suites:
+- **`ChatRoomTest` (32)**: Concurrency, case-insensitive user checks, channel switching/creation/deletion, bitfield overrides, history bounds.
+- **`MessageTest` (16)**: JSON roundtrip, forward compatibility, rich factory payloads.
+- **`RealTimeBotTest` (14)**: Summarization, math parser (`^`, `sqrt`, precedence), diagnostics, computing topics.
+- **`ChatServerIntegrationTest` (11)**: Live TCP handshakes, multi-channel isolation, typing events, rate limiter, reactive profiles.
+- **`DatabaseManagerTest` (5)**: H2 persistence, keyset cursor pagination (`beforeId`/`afterId`), threads, reactions, webhooks, filtered search.
+- **`PhaseOneToFourIntegrationTest` (4)**: Live TCP/HTTP tests covering Optimistic ACK, threads, reactions, DND presence, bitfield `SEND_MESSAGES` denial, polls, REST webhooks, offline FIFO queue & reconnect `afterId` resync, and ECDH+AES-GCM E2EE opaque storage.
+- **`TokenBucketRateLimiterTest` (4)** & **`UserProfileTest` (4)**: Flooding defense and 240-char bio/profile validation.
+- **`SlashCommandHelperTest` (3)**, **`ImageUtilsAndMarkdownTest` (2)**, **`OpenGraphServiceTest` (2)**, **`E2EECryptoTest` (2)**, **`PermissionTest` (2)**, **`PistonClientTest` (1)**, **`SearchQueryParserTest` (1)**.
 
 ```text
-[INFO] Results:
-[INFO] Tests run: 81, Failures: 0, Errors: 0, Skipped: 0
+[INFO] Tests run: 103, Failures: 0, Errors: 0, Skipped: 0
 [INFO] BUILD SUCCESS
 ```
 

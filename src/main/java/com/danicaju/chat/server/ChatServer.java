@@ -1,17 +1,19 @@
 package com.danicaju.chat.server;
 
+import com.danicaju.chat.db.DatabaseManager;
+
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 /**
  * Servidor multihilo de alta concurrencia para RealTimeChat NextGen.
- * Utiliza Virtual Threads (Project Loom en Java 21+) con fallback transparente
- * a Cached Thread Pool para admitir miles de conexiones simultáneas con bajo consumo de memoria.
+ * Integra Virtual Threads (Java 21+), base de datos embebida H2 SQL y servidor HTTP para Webhooks.
  */
 public class ChatServer {
 
@@ -21,27 +23,25 @@ public class ChatServer {
     private final ChatRoom chatRoom;
     private final ExecutorService threadPool;
     private ServerSocket serverSocket;
+    private WebhookHttpServer webhookServer;
     private Thread shutdownHookThread;
-    private final java.util.concurrent.CountDownLatch startLatch = new java.util.concurrent.CountDownLatch(1);
+    private final CountDownLatch startLatch = new CountDownLatch(1);
     private volatile boolean running = false;
 
     public ChatServer(int port) {
+        this(port, port == 0 ? new ChatRoom() : new ChatRoom(DatabaseManager.createDefaultFileDatabase()));
+    }
+
+    public ChatServer(int port, ChatRoom chatRoom) {
         this.port = port;
-        this.chatRoom = new ChatRoom();
+        this.chatRoom = chatRoom;
         this.threadPool = createOptimalThreadPool();
     }
 
-    /**
-     * Espera de forma determinista hasta que el ServerSocket esté vinculado y escuchando.
-     */
     public boolean awaitStarted(long timeout, TimeUnit unit) throws InterruptedException {
         return startLatch.await(timeout, unit);
     }
 
-    /**
-     * Crea un ExecutorService óptimo utilizando Virtual Threads de Java 21+
-     * o CachedThreadPool en entornos donde los Virtual Threads no estén disponibles.
-     */
     public static ExecutorService createOptimalThreadPool() {
         try {
             return Executors.newVirtualThreadPerTaskExecutor();
@@ -50,9 +50,6 @@ public class ChatServer {
         }
     }
 
-    /**
-     * Inicia el bucle de escucha del servidor.
-     */
     public void start() throws IOException {
         int boundPort;
         synchronized (this) {
@@ -60,23 +57,25 @@ public class ChatServer {
                 return;
             }
             this.serverSocket = new ServerSocket(port);
-            this.running = true;
             boundPort = serverSocket.getLocalPort();
+            startWebhookServer(boundPort);
+            this.running = true;
             startLatch.countDown();
         }
 
         System.out.println("==================================================");
-        System.out.println("  RealTimeChat NextGen Server - Puerto " + boundPort);
-        System.out.println("  Concurrencia: Virtual Threads (Project Loom) activados");
+        System.out.println("  RealTimeChat NextGen Server - Puerto TCP " + boundPort);
+        if (webhookServer != null) {
+            System.out.println("  Webhooks HTTP REST API     - Puerto HTTP " + webhookServer.getPort());
+        }
+        System.out.println("  Concurrencia: Virtual Threads + H2 Embedded DB");
         System.out.println("  Rate Limiting: Token Bucket activado");
         System.out.println("==================================================");
 
-        // Registro de gancho de apagado seguro (Shutdown Hook)
         this.shutdownHookThread = new Thread(this::stop, "server-shutdown-hook");
         try {
             Runtime.getRuntime().addShutdownHook(this.shutdownHookThread);
         } catch (IllegalStateException ignored) {
-            // JVM en fase de apagado
         }
 
         try {
@@ -101,9 +100,23 @@ public class ChatServer {
         }
     }
 
-    /**
-     * Detiene el servidor y libera todos los recursos de red y ejecución.
-     */
+    private void startWebhookServer(int chatPort) {
+        int preferred = (this.port == 0) ? 0 : (chatPort + 1);
+        try {
+            webhookServer = new WebhookHttpServer(preferred, chatRoom);
+            webhookServer.start();
+            chatRoom.setWebhookBaseUrl(webhookServer.getBaseUrl());
+        } catch (IOException e) {
+            try {
+                webhookServer = new WebhookHttpServer(0, chatRoom);
+                webhookServer.start();
+                chatRoom.setWebhookBaseUrl(webhookServer.getBaseUrl());
+            } catch (IOException ignored) {
+                System.err.println("[WARN] No se pudo iniciar WebhookHttpServer: " + e.getMessage());
+            }
+        }
+    }
+
     public synchronized void stop() {
         if (!running) {
             return;
@@ -111,7 +124,6 @@ public class ChatServer {
         running = false;
         System.out.println("[INFO] Cerrando servidor RealTimeChat...");
 
-        // Desregistrar gancho de apagado para evitar fugas
         if (shutdownHookThread != null) {
             try {
                 Runtime.getRuntime().removeShutdownHook(shutdownHookThread);
@@ -120,7 +132,13 @@ public class ChatServer {
             shutdownHookThread = null;
         }
 
-        // Cerrar socket servidor principal
+        if (webhookServer != null) {
+            try {
+                webhookServer.stop();
+            } catch (Exception ignored) {
+            }
+        }
+
         try {
             if (serverSocket != null && !serverSocket.isClosed()) {
                 serverSocket.close();
@@ -129,10 +147,8 @@ public class ChatServer {
             System.err.println("[WARN] Error al cerrar ServerSocket: " + e.getMessage());
         }
 
-        // Desconectar clientes activos en la sala
         chatRoom.closeAll();
 
-        // Apagar el grupo de hilos
         threadPool.shutdown();
         try {
             if (!threadPool.awaitTermination(3, TimeUnit.SECONDS)) {
@@ -159,6 +175,10 @@ public class ChatServer {
             return serverSocket.getLocalPort();
         }
         return port;
+    }
+
+    public int getWebhookPort() {
+        return webhookServer != null ? webhookServer.getPort() : -1;
     }
 
     public static void main(String[] args) {

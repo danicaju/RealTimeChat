@@ -1,7 +1,11 @@
 package com.danicaju.chat.client;
 
+import com.danicaju.chat.model.ChannelInfo;
 import com.danicaju.chat.model.Message;
+import com.danicaju.chat.model.PollData;
+import com.danicaju.chat.model.PresenceStatus;
 import com.danicaju.chat.model.UserProfile;
+import com.danicaju.chat.service.SlashCommandHelper;
 
 import java.time.Instant;
 import java.time.ZoneId;
@@ -123,6 +127,20 @@ public class ChatConsoleClient implements ChatEventListener {
                 handleProfileCommand(input);
             } else if (input.startsWith("/w") || input.startsWith("/msg")) {
                 handlePrivateCommand(input);
+            } else if (input.startsWith("/poll")) {
+                handlePollCommand(input);
+            } else if (input.startsWith("/roll")) {
+                connection.sendChatMessage(SlashCommandHelper.evaluateRoll(input, connection.getUsername()));
+            } else if (input.startsWith("/shrug")) {
+                connection.sendChatMessage(SlashCommandHelper.evaluateShrug(input));
+            } else if (input.startsWith("/status")) {
+                handleStatusCommand(input);
+            } else if (input.startsWith("/search")) {
+                handleSearchCommand(input);
+            } else if (input.startsWith("/createchannel")) {
+                handleCreateChannelCommand(input);
+            } else if (input.startsWith("/deletechannel")) {
+                handleDeleteChannelCommand(input);
             } else {
                 connection.sendChatMessage(input);
             }
@@ -191,24 +209,90 @@ public class ChatConsoleClient implements ChatEventListener {
         }
         String target = parts[1].trim();
         String content = parts[2].trim();
-        connection.sendPrivateMessage(target, content);
+        if (connection.hasPeerPublicKey(target) && connection.sendEncryptedPrivateMessage(target, content)) {
+            System.out.println("[E2EE] Mensaje cifrado enviado a @" + target);
+        } else {
+            connection.sendPrivateMessage(target, content);
+        }
+    }
+
+    private void handlePollCommand(String input) {
+        PollData poll = SlashCommandHelper.parsePoll(input);
+        if (poll == null) {
+            System.out.println("Uso: /poll Pregunta | Opción 1 | Opción 2");
+            return;
+        }
+        Message msg = Message.chat(connection.getCurrentChannel(), connection.getUsername(), "[ENCUESTA] " + poll.getQuestion());
+        msg.setPoll(poll);
+        connection.sendOptimisticOrQueue(msg);
+    }
+
+    private void handleStatusCommand(String input) {
+        String[] parts = input.trim().split("\\s+", 3);
+        if (parts.length < 2) {
+            System.out.println("Uso: /status <online|idle|dnd> [texto]");
+            return;
+        }
+        PresenceStatus status = PresenceStatus.fromString(parts[1]);
+        String custom = parts.length > 2 ? parts[2].trim() : myProfile.getCustomStatus();
+        myProfile.setPresence(status);
+        myProfile.setCustomStatus(custom);
+        connection.updatePresence(status, custom, myProfile.getStatusSymbol());
+        System.out.println("[PRESENCIA] Estado actualizado a " + status.getLabel());
+    }
+
+    private void handleSearchCommand(String input) {
+        String query = input.trim().length() > 7 ? input.trim().substring(7).trim() : "";
+        if (query.isEmpty()) {
+            System.out.println("Uso: /search [from:usuario] [in:#canal] [has:link] [has:file] <texto>");
+            return;
+        }
+        connection.searchMessages(query);
+    }
+
+    private void handleCreateChannelCommand(String input) {
+        String[] parts = input.trim().split("\\s+", 3);
+        if (parts.length < 2 || parts[1].isBlank()) {
+            System.out.println("Uso: /createchannel <#nombre> [TEXT|VOICE]");
+            return;
+        }
+        String kind = (parts.length > 2 && "VOICE".equalsIgnoreCase(parts[2]))
+                ? ChannelInfo.TYPE_VOICE
+                : ChannelInfo.TYPE_TEXT;
+        connection.createChannel(new ChannelInfo(parts[1].trim(), kind, "", connection.getUsername()));
+    }
+
+    private void handleDeleteChannelCommand(String input) {
+        String[] parts = input.trim().split("\\s+", 2);
+        if (parts.length < 2 || parts[1].isBlank()) {
+            System.out.println("Uso: /deletechannel <#nombre>");
+            return;
+        }
+        connection.deleteChannel(parts[1].trim());
     }
 
     private void printHelp() {
         System.out.println("--------------------------------------------------");
         System.out.println("Comandos disponibles en RealTimeChat NextGen:");
-        System.out.println("  /join <#canal>          : Cambiar de canal de chat");
-        System.out.println("  /channels              : Ver lista de canales disponibles");
-        System.out.println("  /w <usuario> <mensaje>  : Enviar mensaje privado");
-        System.out.println("  /bio <texto>           : Actualizar tu biografía");
-        System.out.println("  /avatar <preset>       : Cambiar tu avatar (ej: cyber-neon, cosmic)");
-        System.out.println("  /banner <preset/#hex>  : Cambiar tu banner (ej: gradient-cyber, #5865F2)");
-        System.out.println("  /profile <usuario>     : Ver el perfil de un usuario");
-        System.out.println("  @bot <pregunta>        : Consultar al asistente inteligente AI");
-        System.out.println("  /list                  : Listar usuarios en tu canal actual");
-        System.out.println("  /help                  : Ver esta guía de ayuda");
-        System.out.println("  /quit o /salir         : Salir del chat");
-        System.out.println("  <texto>                : Mensaje público al canal (" + connection.getCurrentChannel() + ")");
+        System.out.println("  /join <#canal>                  : Cambiar de canal de chat");
+        System.out.println("  /createchannel <#nombre> [TYPE] : Crear canal TEXT o VOICE");
+        System.out.println("  /deletechannel <#nombre>        : Eliminar un canal");
+        System.out.println("  /channels                       : Ver lista de canales disponibles");
+        System.out.println("  /w <usuario> <mensaje>          : Mensaje directo (E2EE si hay clave)");
+        System.out.println("  /poll Pregunta | Op1 | Op2      : Crear encuesta interactiva");
+        System.out.println("  /roll [NdM]                     : Lanzar dados");
+        System.out.println("  /shrug [texto]                  : Enviar con shrug");
+        System.out.println("  /search [filtros] <texto>       : Buscar (from:, in:, has:link, has:file)");
+        System.out.println("  /status <online|idle|dnd> [txt] : Cambiar presencia y estado");
+        System.out.println("  /bio <texto>                    : Actualizar biografía (max " + UserProfile.MAX_BIO_LENGTH + " chars)");
+        System.out.println("  /avatar <preset>                : Cambiar tu avatar");
+        System.out.println("  /banner <preset/#hex>           : Cambiar tu banner");
+        System.out.println("  /profile <usuario>              : Ver perfil y rol");
+        System.out.println("  @bot <pregunta>                 : Consultar al asistente inteligente AI");
+        System.out.println("  /list                           : Listar usuarios en tu canal actual");
+        System.out.println("  /help                           : Ver esta guía de ayuda");
+        System.out.println("  /quit o /salir                  : Salir del chat");
+        System.out.println("  <texto>                         : Mensaje público al canal (" + connection.getCurrentChannel() + ")");
         System.out.println("--------------------------------------------------");
     }
 
@@ -300,12 +384,26 @@ public class ChatConsoleClient implements ChatEventListener {
     public void onProfileReceived(UserProfile profile) {
         if (profile != null) {
             System.out.println("==================================================");
-            System.out.println("  Perfil de @" + profile.getUsername());
-            System.out.println("  Avatar : " + profile.getAvatar());
+            System.out.println("  Perfil de @" + profile.getUsername() + " [" + profile.getRole() + "]");
+            System.out.println("  Estado : " + (profile.getPresence() != null ? profile.getPresence().getLabel() : "Online")
+                    + (profile.getCustomStatus() != null && !profile.getCustomStatus().isBlank() ? " - " + profile.getCustomStatus() : ""));
+            System.out.println("  Avatar : " + profile.getAvatar()
+                    + (profile.getAvatarImageBase64() != null && !profile.getAvatarImageBase64().isBlank() ? " (imagen custom)" : ""));
             System.out.println("  Banner : " + profile.getBanner());
             System.out.println("  Bio    : " + profile.getBio());
             System.out.println("==================================================");
         }
+    }
+
+    @Override
+    public void onSearchResultsReceived(String query, List<Message> results) {
+        System.out.println("--- Resultados para [" + query + "]: " + (results != null ? results.size() : 0) + " ---");
+        if (results != null) {
+            for (Message m : results) {
+                System.out.println("  " + formatTimestamp(m.getTimestamp()) + " (" + m.getChannel() + ") @" + m.getSender() + ": " + m.getContent());
+            }
+        }
+        System.out.println("--------------------------------------------------");
     }
 
     @Override
